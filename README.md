@@ -89,3 +89,7 @@ This release fixes the strict TypeScript null-narrowing error in Settings that p
 
 ## v0.5.3 hotfix
 The updater repository defaults to `EgorPos/BankaiDirector`. `Check now` persists its fields before checking, has a 30-second timeout, and logs to `%APPDATA%\Director\director-updater.log`. The package now includes the tray icon at runtime.
+
+
+## v0.5.5 release fix
+The GitHub workflow now uploads the full updater set explicitly: `Director-Setup-<version>.exe`, `.blockmap`, and `latest.yml`, and fails if any asset is missing.

@@ -16,7 +16,7 @@ function Find-Exe([string]$Name, [string[]]$Fallbacks) {
   return $null
 }
 
-Banner "Director v0.5.4 - build fix"
+Banner "Director v0.5.5 - complete release assets fix"
 $git = Find-Exe 'git.exe' @('C:\Program Files\Git\cmd\git.exe','C:\Program Files\Git\bin\git.exe')
 $gh = Find-Exe 'gh.exe' @('C:\Program Files\GitHub CLI\gh.exe')
 if (-not $git) { throw 'Git was not found.' }
@@ -40,7 +40,7 @@ if ($LASTEXITCODE -ne 0) { throw "GitHub repository $fullRepo was not found." }
 
 $package = Get-Content (Join-Path $SourceRoot 'package.json') -Raw | ConvertFrom-Json
 $version = [string]$package.version
-if ($version -ne '0.5.4') { throw "This package must be v0.5.4, found $version." }
+if ($version -ne '0.5.5') { throw "This package must be v0.5.5, found $version." }
 $tag = "v$version"
 
 $tempRoot = Join-Path $env:TEMP ("DirectorReleaseRepair-" + [Guid]::NewGuid().ToString('N'))
@@ -62,16 +62,13 @@ try {
 
   Push-Location $cloneDir
   try {
-    $name = (& $git config user.name 2>$null)
-    if (-not $name) { & $git config user.name $owner }
-    $email = (& $git config user.email 2>$null)
-    if (-not $email) { & $git config user.email "$owner@users.noreply.github.com" }
-
+    if (-not (& $git config user.name 2>$null)) { & $git config user.name $owner }
+    if (-not (& $git config user.email 2>$null)) { & $git config user.email "$owner@users.noreply.github.com" }
     & $git add -A
     & $git diff --cached --quiet
     if ($LASTEXITCODE -ne 0) {
-      & $git commit -m "Director v$version - build fix"
-      if ($LASTEXITCODE -ne 0) { throw 'Could not commit v0.5.4.' }
+      & $git commit -m "Director v$version - complete release assets fix"
+      if ($LASTEXITCODE -ne 0) { throw 'Could not commit v0.5.5.' }
     }
     & $git push origin main
     if ($LASTEXITCODE -ne 0) { throw 'Could not push main.' }
@@ -110,12 +107,12 @@ try {
     & $gh run watch $runId --repo $fullRepo --exit-status
     if ($LASTEXITCODE -ne 0) {
       & $gh run view $runId --repo $fullRepo --web
-      throw 'v0.5.4 release build failed.'
+      throw 'v0.5.5 release build failed.'
     }
-    Banner "Director v0.5.4 published"
+    Banner "Director v0.5.5 published with complete assets"
     Start-Process "https://github.com/$fullRepo/releases/tag/$tag"
-    Write-Host "IMPORTANT: because installed v0.4 updater is broken, download Director Setup 0.5.4.exe from the opened release and run it ONCE." -ForegroundColor Yellow
-    Write-Host "After 0.5.4 is installed, future Check now / auto-updates should work inside Director." -ForegroundColor Green
+    Write-Host "The release must contain: Director-Setup-0.5.5.exe, its .blockmap, and latest.yml." -ForegroundColor Green
+    Write-Host "Download and install Director-Setup-0.5.5.exe once over v0.4/v0.5.4. Future updates can then use the in-app updater." -ForegroundColor Yellow
   }
 }
 finally {

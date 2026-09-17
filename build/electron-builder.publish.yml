@@ -8,6 +8,7 @@ files:
   - build/icon.ico
 directories:
   output: release
+artifactName: "Director-Setup-${version}.${ext}"
 win:
   icon: build/icon.ico
   electronUpdaterCompatibility: ">=2.16"

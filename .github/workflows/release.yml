@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version to publish, e.g. 0.4.1"
+        description: "Version to publish, e.g. 0.5.5"
         required: true
         type: string
   push:
@@ -49,18 +49,64 @@ jobs:
       - name: Typecheck and build
         run: npm run build
 
-      - name: Publish GitHub Release
+      - name: Build Windows installer and updater metadata
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx electron-builder --win nsis --publish always --config build/electron-builder.publish.yml
+        run: npx electron-builder --win nsis --publish never --config build/electron-builder.publish.yml
+
+      - name: Verify release files
+        shell: pwsh
+        run: |
+          $version = $env:DIRECTOR_RELEASE_VERSION
+          $installer = "release/Director-Setup-$version.exe"
+          $blockmap = "$installer.blockmap"
+          $latest = "release/latest.yml"
+          Write-Host "Release directory:"
+          Get-ChildItem release | Format-Table Name,Length
+          foreach ($file in @($installer, $blockmap, $latest)) {
+            if (-not (Test-Path $file)) { throw "Required release file missing: $file" }
+          }
+
+      - name: Publish complete GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = $env:DIRECTOR_RELEASE_VERSION
+          $tag = "v$version"
+          $installer = "release/Director-Setup-$version.exe"
+          $blockmap = "$installer.blockmap"
+          $latest = "release/latest.yml"
+          gh release view $tag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $tag --repo "${{ github.repository }}" --title $version --notes "Director $tag"
+            if ($LASTEXITCODE -ne 0) { throw "Could not create GitHub release $tag" }
+          }
+          gh release upload $tag $installer $blockmap $latest --clobber --repo "${{ github.repository }}"
+          if ($LASTEXITCODE -ne 0) { throw "Could not upload complete release assets" }
+
+      - name: Verify GitHub Release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = $env:DIRECTOR_RELEASE_VERSION
+          $tag = "v$version"
+          $names = gh release view $tag --repo "${{ github.repository }}" --json assets --jq '.assets[].name'
+          $required = @("Director-Setup-$version.exe", "Director-Setup-$version.exe.blockmap", "latest.yml")
+          foreach ($name in $required) {
+            if ($names -notcontains $name) { throw "GitHub release is incomplete. Missing asset: $name" }
+          }
+          Write-Host "Release assets verified:"
+          $names | ForEach-Object { Write-Host " - $_" }
 
       - name: Upload installer as workflow artifact
         uses: actions/upload-artifact@v7
         with:
           name: Director-${{ env.DIRECTOR_RELEASE_VERSION }}-windows
           path: |
-            release/*.exe
+            release/Director-Setup-${{ env.DIRECTOR_RELEASE_VERSION }}.exe
+            release/Director-Setup-${{ env.DIRECTOR_RELEASE_VERSION }}.exe.blockmap
             release/latest.yml
-            release/*.blockmap

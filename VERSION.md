@@ -1,8 +1,3 @@
-# Director v0.5.4
+# Director v0.5.5
 
-Build-fix release for the updater + tray hotfix.
-
-- Fixes strict TypeScript narrowing in Settings that blocked the v0.5.3 GitHub Actions build.
-- Keeps the built-in update repository defaults: EgorPos / BankaiDirector.
-- Keeps updater diagnostics, timeout/error status, packaged tray icon, and single-click tray restore.
-- Existing SQLite database and settings are preserved.
+Release pipeline fix: GitHub Action now builds locally, verifies installer + blockmap + latest.yml, then uploads all three explicitly and verifies the published release assets.

@@ -1,7 +1,7 @@
 {
   "name": "life-director",
   "productName": "Director",
-  "version": "0.5.4",
+  "version": "0.5.5",
   "private": true,
   "description": "Local-first personal director for work, life and solo game development.",
   "main": "electron/main.cjs",
@@ -68,7 +68,8 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Director"
-    }
+    },
+    "artifactName": "Director-Setup-${version}.${ext}"
   },
   "engines": {
     "node": ">=24.0.0"
