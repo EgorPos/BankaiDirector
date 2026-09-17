@@ -486,9 +486,10 @@ function SettingsView() {
   }, []);
 
   if (!settings) return <div className="page-stack"><section className="panel">Loading settings…</section></div>;
+  const currentSettings = settings;
 
   async function save() {
-    const result = await window.directorBridge.saveSettings({ ...settings, apiKey: apiKey.trim() || undefined });
+    const result = await window.directorBridge.saveSettings({ ...currentSettings, apiKey: apiKey.trim() || undefined });
     setSettings(result);
     setSaved(true);
     setApiKey("");
@@ -510,15 +511,15 @@ function SettingsView() {
       percent: current?.percent || 0,
       message: "Checking GitHub for updates…",
       lastCheckedAt: current?.lastCheckedAt,
-      repository: `${settings.updateRepoOwner}/${settings.updateRepoName}`,
+      repository: `${currentSettings.updateRepoOwner}/${currentSettings.updateRepoName}`,
       installSupported: current?.installSupported ?? true,
     }));
     try {
       const persisted = await window.directorBridge.saveSettings({
-        updateRepoOwner: settings.updateRepoOwner,
-        updateRepoName: settings.updateRepoName,
-        autoUpdateEnabled: settings.autoUpdateEnabled,
-        autoDownloadUpdates: settings.autoDownloadUpdates,
+        updateRepoOwner: currentSettings.updateRepoOwner,
+        updateRepoName: currentSettings.updateRepoName,
+        autoUpdateEnabled: currentSettings.autoUpdateEnabled,
+        autoDownloadUpdates: currentSettings.autoDownloadUpdates,
       });
       setSettings(persisted);
       const next = await window.directorBridge.checkForUpdates();

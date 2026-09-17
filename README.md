@@ -82,5 +82,10 @@ The GitHub workflow then builds the NSIS installer and publishes the update meta
 If v0.5.1 failed in GitHub Actions at **Set release version** with `npm error Version not changed`, run `REPAIR_AND_PUBLISH_V052.cmd` from this package. It keeps the existing GitHub repository, publishes the fixed v0.5.2 source on top of its history, creates tag `v0.5.2`, and watches the GitHub Actions build.
 
 
+
+## v0.5.4 build fix
+
+This release fixes the strict TypeScript null-narrowing error in Settings that prevented the v0.5.3 GitHub Actions build. Run `REPAIR_AND_PUBLISH_V054.cmd` to publish this version. After the Action turns green, install `Director Setup 0.5.4.exe` once over the existing v0.4 installation.
+
 ## v0.5.3 hotfix
 The updater repository defaults to `EgorPos/BankaiDirector`. `Check now` persists its fields before checking, has a 30-second timeout, and logs to `%APPDATA%\Director\director-updater.log`. The package now includes the tray icon at runtime.

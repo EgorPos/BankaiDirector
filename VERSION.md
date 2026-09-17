@@ -1,10 +1,8 @@
-# Director v0.5.3
+# Director v0.5.4
 
-Hotfix release for updater + tray reliability.
+Build-fix release for the updater + tray hotfix.
 
-- Built-in update repository defaults: EgorPos / BankaiDirector.
-- Check now immediately shows `checking`, saves current repo fields automatically, and surfaces errors/timeouts.
-- Updater writes diagnostics to `%APPDATA%\Director\director-updater.log`.
-- Bundles `build/icon.ico` inside the packaged app so the Windows tray icon is actually visible.
-- Single-click tray icon restores Director; right click still shows the tray menu.
+- Fixes strict TypeScript narrowing in Settings that blocked the v0.5.3 GitHub Actions build.
+- Keeps the built-in update repository defaults: EgorPos / BankaiDirector.
+- Keeps updater diagnostics, timeout/error status, packaged tray icon, and single-click tray restore.
 - Existing SQLite database and settings are preserved.
