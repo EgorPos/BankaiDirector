@@ -1,7 +1,7 @@
 {
   "name": "life-director",
   "productName": "Director",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "private": true,
   "description": "Local-first personal director for work, life and solo game development.",
   "main": "electron/main.cjs",
@@ -39,7 +39,8 @@
     "files": [
       "dist/**/*",
       "electron/**/*",
-      "package.json"
+      "package.json",
+      "build/icon.ico"
     ],
     "directories": {
       "output": "release"

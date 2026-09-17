@@ -5,6 +5,7 @@ files:
   - dist/**/*
   - electron/**/*
   - package.json
+  - build/icon.ico
 directories:
   output: release
 win:

@@ -1,10 +1,10 @@
-# Director v0.5.2
+# Director v0.5.3
 
-Hotfix release for the GitHub publishing pipeline.
+Hotfix release for updater + tray reliability.
 
-## Fixed
-- GitHub Actions no longer fails in **Set release version** when `package.json` already has the same version as the pushed tag.
-- The release workflow now uses `npm version ... --allow-same-version`.
-- Added `REPAIR_AND_PUBLISH_V052.cmd` for repairing an already-created GitHub repository after the failed v0.5.1 release attempt.
-
-No database reset is required. The installed Director can update from v0.4.x directly to v0.5.2 once the GitHub Release is published.
+- Built-in update repository defaults: EgorPos / BankaiDirector.
+- Check now immediately shows `checking`, saves current repo fields automatically, and surfaces errors/timeouts.
+- Updater writes diagnostics to `%APPDATA%\Director\director-updater.log`.
+- Bundles `build/icon.ico` inside the packaged app so the Windows tray icon is actually visible.
+- Single-click tray icon restores Director; right click still shows the tray menu.
+- Existing SQLite database and settings are preserved.

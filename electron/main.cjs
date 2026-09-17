@@ -25,8 +25,8 @@ const DEFAULT_SETTINGS = {
   closeToTray: true,
   autoUpdateEnabled: true,
   autoDownloadUpdates: true,
-  updateRepoOwner: "",
-  updateRepoName: "",
+  updateRepoOwner: "EgorPos",
+  updateRepoName: "BankaiDirector",
 };
 
 function settingsPath() {
@@ -106,8 +106,8 @@ function readSettings() {
     closeToTray: raw.closeToTray !== false,
     autoUpdateEnabled: raw.autoUpdateEnabled !== false,
     autoDownloadUpdates: raw.autoDownloadUpdates !== false,
-    updateRepoOwner: normalizeRepoPart(raw.updateRepoOwner),
-    updateRepoName: normalizeRepoPart(raw.updateRepoName),
+    updateRepoOwner: normalizeRepoPart(raw.updateRepoOwner) || DEFAULT_SETTINGS.updateRepoOwner,
+    updateRepoName: normalizeRepoPart(raw.updateRepoName) || DEFAULT_SETTINGS.updateRepoName,
   };
 }
 
@@ -513,6 +513,7 @@ function createTray() {
     { type: "separator" },
     { label: "Quit", click: () => { isQuitting = true; app.quit(); } },
   ]));
+  tray.on("click", showMainWindow);
   tray.on("double-click", showMainWindow);
 }
 

@@ -1,4 +1,6 @@
 const { app, Notification } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
 const { NsisUpdater } = require('electron-updater');
 
 function sanitizeRepoPart(value) {
@@ -7,6 +9,13 @@ function sanitizeRepoPart(value) {
 }
 
 function createUpdateManager({ getSettings, onStateChanged, showMainWindow, recordEvent }) {
+  const logPath = path.join(app.getPath('userData'), 'director-updater.log');
+  function log(...parts) {
+    try {
+      const line = `[${new Date().toISOString()}] ${parts.map((p) => typeof p === 'string' ? p : JSON.stringify(p)).join(' ')}\n`;
+      fs.appendFileSync(logPath, line, 'utf8');
+    } catch {}
+  }
   let updater = null;
   let updaterKey = '';
   let checkTimer = null;
@@ -25,6 +34,7 @@ function createUpdateManager({ getSettings, onStateChanged, showMainWindow, reco
 
   function emit(patch) {
     state = { ...state, ...patch, currentVersion: app.getVersion() };
+    log('state', state.status, state.message || '', state.repository || '');
     try { onStateChanged?.({ ...state }); } catch {}
   }
 
@@ -67,6 +77,12 @@ function createUpdateManager({ getSettings, onStateChanged, showMainWindow, reco
     destroyUpdater();
     updaterKey = key;
     updater = new NsisUpdater({ provider: 'github', owner, repo, private: false });
+    updater.logger = {
+      info: (...args) => log('INFO', ...args),
+      warn: (...args) => log('WARN', ...args),
+      error: (...args) => log('ERROR', ...args),
+      debug: (...args) => log('DEBUG', ...args),
+    };
     updater.autoDownload = Boolean(settings.autoDownloadUpdates);
     updater.autoInstallOnAppQuit = false;
     updater.allowPrerelease = false;
@@ -109,11 +125,22 @@ function createUpdateManager({ getSettings, onStateChanged, showMainWindow, reco
       emit({ status: 'disabled', message: 'Automatic update checks are disabled.' });
       return { ...state };
     }
+    emit({ status: 'checking', repository: updaterKey, message: 'Checking GitHub for updates…' });
     try {
-      await configured.checkForUpdates();
+      const timeoutMs = 30000;
+      let timeoutId;
+      const timeout = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error('Update check timed out after 30 seconds. Check internet/GitHub access.')), timeoutMs);
+      });
+      try {
+        await Promise.race([configured.checkForUpdates(), timeout]);
+      } finally {
+        clearTimeout(timeoutId);
+      }
       emit({ lastCheckedAt: new Date().toISOString() });
     } catch (error) {
       const message = String(error?.message || error || 'Update check failed');
+      log('CHECK_ERROR', message);
       emit({ status: 'error', message, lastCheckedAt: new Date().toISOString() });
     } finally {
       lastManualCheck = false;

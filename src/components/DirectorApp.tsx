@@ -503,8 +503,38 @@ function SettingsView() {
   }
 
   async function checkUpdates() {
-    const next = await window.directorBridge.checkForUpdates();
-    if (next) setUpdateState(next);
+    setUpdateState((current) => ({
+      status: "checking",
+      currentVersion: current?.currentVersion || version || "…",
+      availableVersion: current?.availableVersion,
+      percent: current?.percent || 0,
+      message: "Checking GitHub for updates…",
+      lastCheckedAt: current?.lastCheckedAt,
+      repository: `${settings.updateRepoOwner}/${settings.updateRepoName}`,
+      installSupported: current?.installSupported ?? true,
+    }));
+    try {
+      const persisted = await window.directorBridge.saveSettings({
+        updateRepoOwner: settings.updateRepoOwner,
+        updateRepoName: settings.updateRepoName,
+        autoUpdateEnabled: settings.autoUpdateEnabled,
+        autoDownloadUpdates: settings.autoDownloadUpdates,
+      });
+      setSettings(persisted);
+      const next = await window.directorBridge.checkForUpdates();
+      if (next) setUpdateState(next);
+    } catch (error) {
+      setUpdateState((current) => ({
+        status: "error",
+        currentVersion: current?.currentVersion || version || "…",
+        availableVersion: current?.availableVersion,
+        percent: current?.percent || 0,
+        message: error instanceof Error ? error.message : String(error || "Update check failed"),
+        lastCheckedAt: new Date().toISOString(),
+        repository: current?.repository,
+        installSupported: current?.installSupported ?? true,
+      }));
+    }
   }
 
   async function downloadUpdate() {
@@ -542,7 +572,7 @@ function SettingsView() {
 
       <section className="panel settings-card update-card">
         <div className="panel-head"><div><small>UPDATES</small><h2>Director Auto Update</h2></div><span className={`update-badge update-${updateState?.status || "idle"}`}>{updateState?.status || "idle"}</span></div>
-        <p className="settings-copy">После одноразовой привязки к GitHub Releases новые версии можно скачивать прямо из Director. База лежит отдельно от программы, поэтому обновление её не заменяет.</p>
+        <p className="settings-copy">Репозиторий обновлений уже встроен. Check now сразу сохраняет эти поля, проверяет GitHub и показывает ошибку, если GitHub недоступен. База лежит отдельно от программы, поэтому обновление её не заменяет.</p>
         <label className="toggle-row"><input type="checkbox" checked={settings.autoUpdateEnabled} onChange={(e) => setSettings({ ...settings, autoUpdateEnabled: e.target.checked })} /><span><strong>Check automatically</strong><small>Проверка при запуске и затем раз в несколько часов.</small></span></label>
         <label className="toggle-row"><input type="checkbox" checked={settings.autoDownloadUpdates} onChange={(e) => setSettings({ ...settings, autoDownloadUpdates: e.target.checked })} /><span><strong>Download automatically</strong><small>Новая версия скачивается в фоне; установка только после твоего Restart & Update.</small></span></label>
         <div className="settings-grid">
