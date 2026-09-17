@@ -6,8 +6,9 @@ declare global {
   interface Window {
     directorBridge: {
       chat: (state: AppState, message: string) => Promise<{ message: string; offline?: boolean }>;
-      pick: (state: AppState, mode: "work" | "stream" | "short" | "visual") => Promise<{ pick?: DirectorPick; offline?: boolean }>;
+      pick: (state: AppState, mode: "work" | "stream" | "short" | "visual", excludeTaskIds?: string[]) => Promise<{ pick?: DirectorPick; offline?: boolean; reason?: string }>;
       classifyTask: (title: string, existingTasks: Task[]) => Promise<{ classification?: Partial<Task>; offline?: boolean }>;
+      analyzeTasks: (tasks: Task[]) => Promise<{ patches: Array<{ taskId: string } & Partial<Task>>; aiUsed: boolean; offline?: boolean; summary?: string }>;
       analyzeImport: (text: string, existingTasks: Task[]) => Promise<{ suggestions: ImportSuggestion[]; aiUsed: boolean; summary?: string }>;
       chooseImportFile: () => Promise<{ canceled: boolean; name?: string; text?: string; error?: string }>;
       loadState: () => Promise<AppState | null>;

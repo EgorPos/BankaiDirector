@@ -43,6 +43,9 @@ function MainDirectorApp() {
   const [pick, setPick] = useState<DirectorPick | null>(null);
   const [pickMode, setPickMode] = useState<PickMode>("work");
   const [thinking, setThinking] = useState(false);
+  const [pickHistory, setPickHistory] = useState<string[]>([]);
+  const [pickNotice, setPickNotice] = useState("");
+  const pickRequestSeq = useRef(0);
   const savingTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -75,18 +78,39 @@ function MainDirectorApp() {
     return state.tasks.filter((t) => t.completedAt && new Date(t.completedAt).toDateString() === today).length;
   }, [state.tasks]);
 
-  async function askDirector(mode: PickMode = pickMode) {
+  async function askDirector(mode: PickMode = pickMode, reroll = false) {
+    const requestSeq = ++pickRequestSeq.current;
     setPickMode(mode);
+    const excluded = reroll && pick
+      ? [pick.taskId, ...pickHistory.filter((id) => id !== pick.taskId)].slice(0, 10)
+      : [];
+
+    // Always show a useful local answer immediately. AI refines it afterwards,
+    // so a slow/broken API can no longer leave Director Queue empty.
+    const localPick = localDirectorPick(state, mode, excluded);
+    if (localPick) {
+      setPick(localPick);
+      setPickNotice("");
+      setPickHistory((current) => [localPick.taskId, ...current.filter((id) => id !== localPick.taskId)].slice(0, 10));
+    } else {
+      setPick(null);
+      setPickNotice("Сейчас нет доступных задач: всё либо завершено, в архиве или отложено на будущее.");
+    }
+
     setThinking(true);
     try {
-      const data = await window.directorBridge.pick(state, mode);
+      const data = await window.directorBridge.pick(state, mode, excluded);
       const candidate = data.pick;
-      if (candidate?.taskId && state.tasks.some((t) => t.id === candidate.taskId)) setPick(candidate);
-      else setPick(localDirectorPick(state, mode));
+      const valid = candidate?.taskId && !excluded.includes(candidate.taskId) && state.tasks.some((t) => t.id === candidate.taskId && !["done", "archived", "inbox"].includes(t.status));
+      if (requestSeq === pickRequestSeq.current && candidate && valid) {
+        setPick(candidate);
+        setPickNotice("");
+        setPickHistory((current) => [candidate.taskId, ...current.filter((id) => id !== candidate.taskId)].slice(0, 10));
+      }
     } catch {
-      setPick(localDirectorPick(state, mode));
+      // The local pick is already on screen. Nothing else to do.
     } finally {
-      setThinking(false);
+      if (requestSeq === pickRequestSeq.current) setThinking(false);
     }
   }
 
@@ -146,6 +170,7 @@ function MainDirectorApp() {
             completedToday={completedToday}
             pick={pick}
             thinking={thinking}
+            pickNotice={pickNotice}
             mode={pickMode}
             askDirector={askDirector}
             startPick={startPick}
@@ -174,13 +199,14 @@ function EnergyPicker({ value, onChange }: { value: Energy; onChange: (v: Energy
   );
 }
 
-function TodayView({ state, completedToday, pick, thinking, mode, askDirector, startPick, finishPick, deferPick, setView, updateTask }: {
+function TodayView({ state, completedToday, pick, thinking, pickNotice, mode, askDirector, startPick, finishPick, deferPick, setView, updateTask }: {
   state: AppState;
   completedToday: number;
   pick: DirectorPick | null;
   thinking: boolean;
+  pickNotice: string;
   mode: PickMode;
-  askDirector: (m?: PickMode) => void;
+  askDirector: (m?: PickMode, reroll?: boolean) => void;
   startPick: () => void;
   finishPick: () => void;
   deferPick: (reason: string, hours: number) => void;
@@ -202,22 +228,22 @@ function TodayView({ state, completedToday, pick, thinking, mode, askDirector, s
       <section className="director-card hero-card">
         <div className="section-label"><span className="spark">✦</span> DIRECTOR QUEUE</div>
         {!pick ? (
-          <div className="empty-pick"><p>Не выбирай из пятидесяти пунктов. Скажи, какой сейчас режим — Director выберет одну задачу.</p><button className="primary big" onClick={() => askDirector("work")} disabled={thinking}>{thinking ? "Думаю…" : "WHAT SHOULD I DO?"}</button></div>
+          <div className="empty-pick"><p>{pickNotice || "Не выбирай из пятидесяти пунктов. Скажи, какой сейчас режим — Director выберет одну задачу."}</p><button className="primary big" onClick={() => askDirector("work", false)} disabled={thinking}>{thinking ? "Думаю…" : "WHAT SHOULD I DO?"}</button></div>
         ) : (
           <div className="pick-content">
             <small>NEXT TASK</small><h2>{pick.taskTitle}</h2>
             {pick.estimatedMinutes && <div className="time-chip">~ {formatMinutes(pick.estimatedMinutes)}</div>}
             <p className="why"><b>Почему:</b> {pick.why}</p>{pick.caution && <p className="caution">{pick.caution}</p>}
             {selectedTask && <InlineTaskChecklist task={selectedTask} updateTask={updateTask} />}
-            <div className="actions"><button className="primary" onClick={startPick}>▶ Start</button><button onClick={finishPick}>✓ Done</button><button onClick={() => askDirector(mode)}>Another one</button><button onClick={() => setShowDefer(true)}>Life happened</button></div>
+            <div className="actions"><button className="primary" onClick={startPick}>▶ Start</button><button onClick={finishPick}>✓ Done</button><button onClick={() => askDirector(mode, true)}>Another one</button><button onClick={() => setShowDefer(true)}>Life happened</button></div>
             {showDefer && <div className="defer-box"><label><span>Что произошло?</span><input value={deferReason} onChange={(e) => setDeferReason(e.target.value)} /></label><div className="actions"><button onClick={() => doDefer(2)}>Через 2 часа</button><button onClick={() => doDefer(24)}>Завтра</button><button onClick={() => doDefer(72)}>Через 3 дня</button><button className="text-button" onClick={() => setShowDefer(false)}>Отмена</button></div></div>}
           </div>
         )}
         <div className="mode-row">
-          <button className={mode === "work" ? "mode active" : "mode"} onClick={() => askDirector("work")}>🧠 Focus</button>
-          <button className={mode === "stream" ? "mode active" : "mode"} onClick={() => askDirector("stream")}>📺 Stream</button>
-          <button className={mode === "short" ? "mode active" : "mode"} onClick={() => askDirector("short")}>⚡ 30 min</button>
-          <button className={mode === "visual" ? "mode active" : "mode"} onClick={() => askDirector("visual")}>🎨 Visual</button>
+          <button className={mode === "work" ? "mode active" : "mode"} onClick={() => askDirector("work", false)}>🧠 Focus</button>
+          <button className={mode === "stream" ? "mode active" : "mode"} onClick={() => askDirector("stream", false)}>📺 Stream</button>
+          <button className={mode === "short" ? "mode active" : "mode"} onClick={() => askDirector("short", false)}>⚡ 30 min</button>
+          <button className={mode === "visual" ? "mode active" : "mode"} onClick={() => askDirector("visual", false)}>🎨 Visual</button>
         </div>
       </section>
 
@@ -269,22 +295,16 @@ function InlineTaskChecklist({ task, updateTask, compact = false }: { task: Task
 }
 
 function sanitizeClassification(classification: Partial<Task>): Partial<Task> {
-  return {
-    kind: classification.kind,
-    taskType: classification.taskType,
-    project: classification.project,
-    area: classification.area,
-    chapter: classification.chapter,
-    feature: classification.feature,
-    tags: classification.tags,
-    estimateMinutes: classification.estimateMinutes,
-    streamFriendly: classification.streamFriendly,
-    visual: classification.visual,
-    deepWork: classification.deepWork,
-    blocking: classification.blocking,
-    classificationReason: classification.classificationReason,
-    classificationConfidence: classification.classificationConfidence,
-  };
+  const patch: Partial<Task> = {};
+  const keys: Array<keyof Task> = [
+    "kind", "taskType", "project", "area", "chapter", "feature", "tags", "estimateMinutes",
+    "streamFriendly", "visual", "deepWork", "blocking", "classificationReason", "classificationConfidence",
+  ];
+  for (const key of keys) {
+    const value = classification[key];
+    if (value !== undefined) (patch as any)[key] = value;
+  }
+  return patch;
 }
 
 
@@ -411,7 +431,11 @@ function CalendarView({ state, setState }: { state: AppState; setState: React.Di
 function TasksView({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
   const [title, setTitle] = useState("");
   const [filter, setFilter] = useState<"active" | "completed" | "archive" | "all">("active");
+  const [fitFilter, setFitFilter] = useState<"all" | "stream" | "offstream" | "untagged">("all");
   const [classifyingId, setClassifyingId] = useState<string | null>(null);
+  const [backlogAnalyzing, setBacklogAnalyzing] = useState(false);
+  const [backlogSummary, setBacklogSummary] = useState("");
+  const [backlogAiUsed, setBacklogAiUsed] = useState(false);
 
   async function addTask() {
     if (!title.trim()) return;
@@ -432,11 +456,45 @@ function TasksView({ state, setState }: { state: AppState; setState: React.Dispa
     }
   }
 
+  async function analyzeBacklog() {
+    if (backlogAnalyzing) return;
+    const candidates = state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status));
+    if (!candidates.length) {
+      setBacklogSummary("Нет активных задач для анализа.");
+      return;
+    }
+    setBacklogAnalyzing(true);
+    setBacklogSummary(`Director разбирает ${candidates.length} задач: stream/off-stream, теги, время и тип работы…`);
+    try {
+      const result = await window.directorBridge.analyzeTasks(candidates);
+      const patches = new Map(result.patches.map((entry) => [entry.taskId, entry]));
+      setState((s) => ({
+        ...s,
+        tasks: s.tasks.map((task) => {
+          const raw = patches.get(task.id);
+          if (!raw) return task;
+          const { taskId: _taskId, ...patch } = raw;
+          return { ...task, ...sanitizeClassification(patch) };
+        }),
+      }));
+      setBacklogAiUsed(Boolean(result.aiUsed));
+      setBacklogSummary(result.summary || `Разобрано ${result.patches.length} задач.`);
+    } catch {
+      setBacklogAiUsed(false);
+      setBacklogSummary("Не удалось завершить backlog pass. Задачи не потеряны — можно просто запустить анализ ещё раз.");
+    } finally {
+      setBacklogAnalyzing(false);
+    }
+  }
+
   const tasks = state.tasks.filter((task) => {
     if (task.status === "inbox") return false;
-    if (filter === "completed") return task.status === "done";
-    if (filter === "archive") return task.status === "archived";
-    if (filter === "active") return !["done", "archived"].includes(task.status);
+    if (filter === "completed" && task.status !== "done") return false;
+    if (filter === "archive" && task.status !== "archived") return false;
+    if (filter === "active" && ["done", "archived"].includes(task.status)) return false;
+    if (fitFilter === "stream" && task.streamFriendly !== true) return false;
+    if (fitFilter === "offstream" && task.streamFriendly !== false) return false;
+    if (fitFilter === "untagged" && task.streamFriendly !== undefined) return false;
     return true;
   });
 
@@ -446,6 +504,9 @@ function TasksView({ state, setState }: { state: AppState; setState: React.Dispa
     archive: state.tasks.filter((task) => task.status === "archived").length,
     all: state.tasks.filter((task) => task.status !== "inbox").length,
   };
+  const streamCount = state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status) && task.streamFriendly === true).length;
+  const offStreamCount = state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status) && task.streamFriendly === false).length;
+  const untaggedCount = state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status) && task.streamFriendly === undefined).length;
 
   const labels: Record<typeof filter, string> = {
     active: "Active",
@@ -457,10 +518,30 @@ function TasksView({ state, setState }: { state: AppState; setState: React.Dispa
   return (
     <div className="page-stack">
       <section className="quick-add"><input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void addTask()} placeholder="Просто напиши задачу. Важность и контекст Director разберёт сам." /><button className="primary" onClick={() => void addTask()}>+ Add</button></section>
-      <div className="filter-row">{(["active", "completed", "archive", "all"] as const).map((f) => <button key={f} className={filter === f ? "chip active" : "chip"} onClick={() => setFilter(f)}>{labels[f]} <span className="chip-count">{counts[f]}</span></button>)}{classifyingId && <span className="inline-status">Director разбирает новую задачу…</span>}</div>
+
+      <section className="panel backlog-ai-panel">
+        <div className="panel-head">
+          <div><small>AI BACKLOG PASS</small><h3>Разложить задачи по stream / off-stream</h3></div>
+          <button className="primary" onClick={() => void analyzeBacklog()} disabled={backlogAnalyzing}>{backlogAnalyzing ? "Director анализирует…" : "✦ Analyze backlog"}</button>
+        </div>
+        <p className="settings-copy">Director проходит по активному пулу, не меняя названия и структуру Chapter/Act: ставит stream/off-stream, теги, примерное время, visual/deep-work, blocker и тип задачи. Это потом напрямую влияет на Focus и Stream режимы планировщика.</p>
+        <div className="backlog-analysis-stats"><span>📺 stream: <b>{streamCount}</b></span><span>🧠 off-stream: <b>{offStreamCount}</b></span><span>？ untagged: <b>{untaggedCount}</b></span></div>
+        {backlogSummary && <p className={backlogAiUsed ? "task-reason" : "settings-copy"}>{backlogSummary}</p>}
+      </section>
+
+      <div className="filter-row">
+        {(["active", "completed", "archive", "all"] as const).map((f) => <button key={f} className={filter === f ? "chip active" : "chip"} onClick={() => setFilter(f)}>{labels[f]} <span className="chip-count">{counts[f]}</span></button>)}
+        {classifyingId && <span className="inline-status">Director разбирает новую задачу…</span>}
+      </div>
+      <div className="filter-row secondary-filters">
+        <button className={fitFilter === "all" ? "chip active" : "chip"} onClick={() => setFitFilter("all")}>All fits</button>
+        <button className={fitFilter === "stream" ? "chip active" : "chip"} onClick={() => setFitFilter("stream")}>📺 Stream {streamCount}</button>
+        <button className={fitFilter === "offstream" ? "chip active" : "chip"} onClick={() => setFitFilter("offstream")}>🧠 Off-stream {offStreamCount}</button>
+        <button className={fitFilter === "untagged" ? "chip active" : "chip"} onClick={() => setFitFilter("untagged")}>？ Untagged {untaggedCount}</button>
+      </div>
       <section className="task-list">
         {tasks.map((task) => <TaskRow key={task.id} task={task} update={(patch) => setState((s) => ({ ...s, tasks: s.tasks.map((t) => t.id === task.id ? { ...t, ...patch } : t) }))} remove={() => setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== task.id) }))} />)}
-        {!tasks.length && <div className="empty-list">{filter === "archive" ? "Архив пуст. Сюда можно убирать отменённые и больше не актуальные задачи." : filter === "completed" ? "Пока нет завершённых задач." : "Здесь пока пусто."}</div>}
+        {!tasks.length && <div className="empty-list">{filter === "archive" ? "Архив пуст. Сюда можно убирать отменённые и больше не актуальные задачи." : filter === "completed" ? "Пока нет завершённых задач." : "Под этот фильтр задач сейчас нет."}</div>}
       </section>
     </div>
   );
@@ -516,7 +597,7 @@ function TaskRow({ task, update, remove }: { task: Task; update: (p: Partial<Tas
         )}
         <div className="task-main" onClick={() => setExpanded((v) => !v)}>
           <strong>{task.title}</strong>
-          <div className="task-meta">{task.project && <span>{task.project}</span>}{task.chapter && <span>{task.chapter}</span>}{task.area && <span>{task.area}</span>}{task.feature && <span>{task.feature}</span>}{task.taskType && <span>{task.taskType}</span>}{task.estimateMinutes && <span>~{formatMinutes(task.estimateMinutes)}</span>}{task.blocking && <span className="meta-hot">blocker</span>}{task.streamFriendly && <span>stream</span>}{checklist.length > 0 && <span>☑ {doneCount}/{checklist.length}</span>}{deferredText && <span>deferred {deferredText}</span>}{isArchived && <span>archived</span>}</div>
+          <div className="task-meta">{task.project && <span>{task.project}</span>}{task.chapter && <span>{task.chapter}</span>}{task.area && <span>{task.area}</span>}{task.feature && <span>{task.feature}</span>}{task.taskType && <span>{task.taskType}</span>}{task.estimateMinutes && <span>~{formatMinutes(task.estimateMinutes)}</span>}{task.blocking && <span className="meta-hot">blocker</span>}{task.streamFriendly === true && <span className="meta-stream">📺 stream</span>}{task.streamFriendly === false && <span className="meta-offstream">🧠 off-stream</span>}{task.tags?.filter((tag) => !["miro", "stream", "off-stream", "offstream", task.taskType].includes(tag)).slice(0, 5).map((tag) => <span key={tag}>#{tag}</span>)}{checklist.length > 0 && <span>☑ {doneCount}/{checklist.length}</span>}{deferredText && <span>deferred {deferredText}</span>}{isArchived && <span>archived</span>}</div>
           {task.notes && <p className="task-note-preview">{task.notes}</p>}
         </div>
         <button className="task-details-button" onClick={() => setExpanded((v) => !v)}>{expanded ? "Close" : "Details"}</button>
@@ -530,7 +611,10 @@ function TaskRow({ task, update, remove }: { task: Task; update: (p: Partial<Tas
           <label><span>Chapter</span><input value={task.chapter || ""} onChange={(e) => update({ chapter: e.target.value || undefined })} placeholder="Chapter 1" /></label>
           <label><span>Area / Act</span><input value={task.area || ""} onChange={(e) => update({ area: e.target.value || undefined })} placeholder="Act 4 — Bag Shop" /></label>
           <label><span>Feature / Group</span><input value={task.feature || ""} onChange={(e) => update({ feature: e.target.value || undefined })} placeholder="HUB Items / Boss / UI…" /></label>
+          <label><span>Stream fit</span><select value={task.streamFriendly === undefined ? "unknown" : task.streamFriendly ? "stream" : "offstream"} onChange={(e) => update({ streamFriendly: e.target.value === "unknown" ? undefined : e.target.value === "stream" })}><option value="unknown">Unknown</option><option value="stream">📺 Stream</option><option value="offstream">🧠 Off-stream</option></select></label>
+          <label><span>Estimate, min</span><input type="number" min="10" step="10" value={task.estimateMinutes || ""} onChange={(e) => update({ estimateMinutes: e.target.value ? Number(e.target.value) : undefined })} placeholder="90" /></label>
         </div>
+        <label><span>Tags</span><input value={(task.tags || []).join(", ")} onChange={(e) => update({ tags: e.target.value.split(",").map((v) => v.trim().toLowerCase()).filter(Boolean) })} placeholder="ui, animation, stream, polish…" /></label>
         <label><span>Описание / заметки</span><textarea value={task.notes || ""} onChange={(e) => update({ notes: e.target.value })} placeholder="Что именно надо сделать, ссылки, детали, мысли…" /></label>
         <div className="task-checklist-head"><div><small>CHECKLIST</small><strong>{doneCount}/{checklist.length}</strong></div><div className="actions">{isArchived ? <button onClick={() => setStatus("todo")}>↺ Restore to Active</button> : <button onClick={() => setStatus("archived")}>Archive task</button>}</div></div>
         <div className="task-subtasks">

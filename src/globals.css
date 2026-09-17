@@ -283,3 +283,14 @@ input, textarea { width: 100%; background: #0f0c15; border: 1px solid var(--line
 .reminder-status-box strong { font-size: 13px; }
 .reminder-status-box small { color: var(--muted); }
 .mono-path { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; overflow-wrap: anywhere; }
+
+/* v0.8 — reliable Director Queue reroll + AI backlog stream/off-stream pass */
+.backlog-ai-panel { display: grid; gap: 12px; border-color: #4d3a69; background: linear-gradient(180deg, rgba(31,23,43,.98), rgba(18,15,25,.96)); }
+.backlog-analysis-stats { display: flex; gap: 9px; flex-wrap: wrap; }
+.backlog-analysis-stats span { color: #b8aec5; background: #110d18; border: 1px solid #342943; border-radius: 999px; padding: 6px 9px; font-size: 11px; }
+.secondary-filters { margin-top: -8px; opacity: .96; }
+.task-meta .meta-stream { color: #ffb7d6; background: #51213a55; border: 1px solid #74334e66; }
+.task-meta .meta-offstream { color: #b9c7ff; background: #25315a55; border: 1px solid #344a7a66; }
+@media (max-width: 760px) {
+  .backlog-analysis-stats { display: grid; grid-template-columns: 1fr; }
+}

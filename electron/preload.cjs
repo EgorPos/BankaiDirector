@@ -5,8 +5,9 @@ let updateStateListener = null;
 
 contextBridge.exposeInMainWorld("directorBridge", {
   chat: (state, message) => ipcRenderer.invoke("director:chat", { state, message }),
-  pick: (state, mode) => ipcRenderer.invoke("director:pick", { state, mode }),
+  pick: (state, mode, excludeTaskIds = []) => ipcRenderer.invoke("director:pick", { state, mode, excludeTaskIds }),
   classifyTask: (title, existingTasks) => ipcRenderer.invoke("director:classify-task", { title, existingTasks }),
+  analyzeTasks: (tasks) => ipcRenderer.invoke("director:analyze-tasks", { tasks }),
   analyzeImport: (text, existingTasks) => ipcRenderer.invoke("director:analyze-import", { text, existingTasks }),
   chooseImportFile: () => ipcRenderer.invoke("director:choose-import-file"),
   loadState: () => ipcRenderer.invoke("director:load-state"),

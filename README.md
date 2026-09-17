@@ -1,17 +1,18 @@
-# Director Desktop v0.7.2
+# Director Desktop v0.8.0
 
-This hotfix hardens Stream Prep reminders and fixes popup audio. The existing SQLite database and Miro backlog import are preserved.
+## Что нового
 
-# Director Desktop v0.7.1
+- Director Queue теперь всегда показывает локальный выбор сразу, даже если AI/API тормозит или недоступен.
+- `Another one` действительно исключает предыдущие варианты и рероллит задачу, вместо повторного выбора того же top-score таска.
+- Focus / Stream / 30 min / Visual используют более строгие правила выбора.
+- В Tasks появился **AI Backlog Pass**: Director проходит по активному пулу, решает `stream` / `off-stream`, выставляет теги, тип задачи, visual/deep-work, blocker и примерное время.
+- Добавлены фильтры `Stream`, `Off-stream`, `Untagged` и показ AI-тегов прямо в списке задач.
+- Миро-задачи и вся текущая SQLite база сохраняются без повторного импорта или сброса.
 
-This update imports the current active Reytrieve backlog captured from Egor's Miro screenshots.
+## Публикация
 
-## Miro import rules
-- One bullet / one written row = one task.
-- White active rows are imported.
-- Yellow, red, and blue-only rows are intentionally not imported.
-- Category headers are stored as project metadata rather than task titles.
-- Stable IDs make the migration safe to run once without duplicating tasks.
+Двойной клик по:
 
-## Upgrade
-Run `REPAIR_AND_PUBLISH_V071.cmd`, wait for GitHub Actions to finish, then use Director -> Settings -> Check now.
+`REPAIR_AND_PUBLISH_V080.cmd`
+
+После зелёного GitHub Actions открой установленный Director → Settings → `Check now` → `Restart & Update`.

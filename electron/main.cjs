@@ -375,6 +375,55 @@ function fallbackClassification(title) {
   };
 }
 
+function normalizeTaskAnalysisPatch(task, raw) {
+  const patch = raw && typeof raw === "object" ? raw : {};
+  const streamFriendly = typeof patch.streamFriendly === "boolean" ? patch.streamFriendly : task.streamFriendly;
+  const visual = typeof patch.visual === "boolean" ? patch.visual : task.visual;
+  const deepWork = typeof patch.deepWork === "boolean" ? patch.deepWork : task.deepWork;
+  const blocking = typeof patch.blocking === "boolean" ? patch.blocking : task.blocking;
+  const tags = Array.isArray(patch.tags) ? patch.tags.map((v) => String(v || "").trim().toLowerCase()).filter(Boolean) : (Array.isArray(task.tags) ? task.tags : []);
+  const cleanTags = [...new Set(tags.filter((tag) => tag !== "stream" && tag !== "off-stream" && tag !== "offstream"))];
+  if (streamFriendly === true) cleanTags.push("stream");
+  else if (streamFriendly === false) cleanTags.push("off-stream");
+  if (visual === true && !cleanTags.includes("visual")) cleanTags.push("visual");
+  if (deepWork === true && !cleanTags.includes("deep-work")) cleanTags.push("deep-work");
+  if (blocking === true && !cleanTags.includes("blocker")) cleanTags.push("blocker");
+  const taskType = typeof patch.taskType === "string" && patch.taskType.trim() ? patch.taskType.trim() : task.taskType;
+  if (taskType && !cleanTags.includes(String(taskType).toLowerCase())) cleanTags.push(String(taskType).toLowerCase());
+  return {
+    taskId: task.id,
+    taskType,
+    estimateMinutes: Number.isFinite(Number(patch.estimateMinutes)) ? Math.max(10, Math.min(1440, Math.round(Number(patch.estimateMinutes)))) : task.estimateMinutes,
+    streamFriendly,
+    visual,
+    deepWork,
+    blocking,
+    tags: cleanTags.slice(0, 8),
+    classificationReason: typeof patch.classificationReason === "string" && patch.classificationReason.trim()
+      ? patch.classificationReason.trim()
+      : (task.classificationReason || "Director backlog analysis."),
+    classificationConfidence: Number.isFinite(Number(patch.classificationConfidence))
+      ? Math.max(0, Math.min(1, Number(patch.classificationConfidence)))
+      : (task.classificationConfidence ?? 0.75),
+  };
+}
+
+function fallbackBacklogAnalysis(tasks) {
+  return tasks.map((task) => normalizeTaskAnalysisPatch(task, fallbackClassification(task.title)));
+}
+
+async function analyzeTaskChunk(client, settings, tasks) {
+  const response = await client.responses.create({
+    model: settings.model,
+    instructions: `${DIRECTOR_PROMPT}\n${REYTRIEVE_CONTEXT}`,
+    input: `Ты делаешь один проход по реальному backlog Reytrieve. Для КАЖДОЙ переданной задачи реши, лучше ли делать её НА СТРИМЕ или ВНЕ СТРИМА, и добавь практичные теги. Не ставь числовой priority и не меняй title/id/chapter/area/feature.\n\nКРИТЕРИИ STREAM FRIENDLY:\n- true: визуально понятный результат, моделинг/арт/UI/VFX/анимация/левел-арт, небольшая ясная задача, зрителю видно прогресс;\n- false: глубокая отладка, архитектура, сохранения, системная логика, риск зависнуть надолго, спойлерные/технически скучные вещи;\n- не помечай всё визуальное stream=true автоматически: большая неопределённая задача вроде \"уровень города\" может быть слишком широкой.\n\nТЕГИ: 2-6 коротких тегов на английском lower-case, например ui, vfx, animation, level-art, bug, systems, narrative, assets, audio, polish, stream, off-stream, deep-work. Тег stream/off-stream будет нормализован приложением, но можешь вернуть его тоже.\nОцени также estimateMinutes, visual, deepWork, blocking и taskType. blocking=true только если задача реально мешает двигаться дальше, а не просто важна.\n\nВерни ТОЛЬКО JSON без markdown:\n{"items":[{"taskId":"...","taskType":"bug|feature|polish|art|ui|vfx|animation|design|admin|personal|work|other","estimateMinutes":90,"streamFriendly":true,"visual":true,"deepWork":false,"blocking":false,"tags":["ui","stream"],"classificationReason":"коротко почему стрим/не стрим и что это за работа","classificationConfidence":0.85}]}\n\nTASKS:\n${JSON.stringify(tasks.map((t) => ({ id: t.id, title: t.title, notes: t.notes, project: t.project, chapter: t.chapter, area: t.area, feature: t.feature, taskType: t.taskType, tags: t.tags, estimateMinutes: t.estimateMinutes, streamFriendly: t.streamFriendly, visual: t.visual, deepWork: t.deepWork, blocking: t.blocking })), null, 2)}`,
+  });
+  const parsed = parseJsonObject(response.output_text);
+  const rawItems = Array.isArray(parsed?.items) ? parsed.items : [];
+  const byId = new Map(rawItems.map((item) => [String(item?.taskId || ""), item]));
+  return tasks.map((task) => normalizeTaskAnalysisPatch(task, byId.get(task.id) || fallbackClassification(task.title)));
+}
+
 function cleanImportLine(line) {
   return line
     .replace(/^\s*[-*•–—]+\s*/, "")
@@ -976,6 +1025,51 @@ ipcMain.handle("director:analyze-import", async (_event, payload) => {
   }
 });
 
+ipcMain.handle("director:analyze-tasks", async (_event, payload) => {
+  const tasks = Array.isArray(payload?.tasks)
+    ? payload.tasks.filter((task) => task && task.id && task.title && !["done", "archived", "inbox"].includes(task.status)).slice(0, 220)
+    : [];
+  if (!tasks.length) return { patches: [], aiUsed: false, summary: "Нет активных задач для анализа." };
+  try {
+    const { client, settings } = await getOpenAIClient();
+    if (!client) {
+      return {
+        patches: fallbackBacklogAnalysis(tasks),
+        aiUsed: false,
+        offline: true,
+        summary: "OpenAI API key не подключён — применена только локальная грубая классификация. Подключи AI в Settings и запусти анализ ещё раз для нормального stream/off-stream разбора.",
+      };
+    }
+    const patches = [];
+    const chunkSize = 20;
+    for (let start = 0; start < tasks.length; start += chunkSize) {
+      const chunk = tasks.slice(start, start + chunkSize);
+      try {
+        const chunkPatches = await analyzeTaskChunk(client, settings, chunk);
+        patches.push(...chunkPatches);
+      } catch (error) {
+        console.error("Backlog analysis chunk error:", error);
+        patches.push(...fallbackBacklogAnalysis(chunk));
+      }
+    }
+    const streamCount = patches.filter((p) => p.streamFriendly === true).length;
+    const offStreamCount = patches.filter((p) => p.streamFriendly === false).length;
+    return {
+      patches,
+      aiUsed: true,
+      summary: `Director разобрал ${patches.length} задач: ${streamCount} лучше для стрима, ${offStreamCount} лучше вне стрима. Теги и оценки времени обновлены.`,
+    };
+  } catch (error) {
+    console.error("Backlog analysis error:", error);
+    return {
+      patches: fallbackBacklogAnalysis(tasks),
+      aiUsed: false,
+      offline: true,
+      summary: "AI-анализ сорвался, поэтому применена локальная классификация. Можно безопасно запустить проход ещё раз позже.",
+    };
+  }
+});
+
 ipcMain.handle("director:chat", async (_event, payload) => {
   try {
     const { client, settings } = await getOpenAIClient();
@@ -999,21 +1093,40 @@ ipcMain.handle("director:chat", async (_event, payload) => {
 
 ipcMain.handle("director:pick", async (_event, payload) => {
   try {
+    const excluded = new Set(Array.isArray(payload?.excludeTaskIds) ? payload.excludeTaskIds.map(String) : []);
+    const sourceTasks = Array.isArray(payload.state?.tasks) ? payload.state.tasks : [];
+    const now = Date.now();
+    const candidates = sourceTasks.filter((task) => {
+      if (["done", "archived", "inbox"].includes(task.status) || excluded.has(String(task.id))) return false;
+      if (task.status === "deferred" && task.deferredUntil && new Date(task.deferredUntil).getTime() > now) return false;
+      return true;
+    });
+    if (!candidates.length) return { offline: true, reason: "no-candidates" };
+
     const { client, settings } = await getOpenAIClient();
     if (!client) return { offline: true };
     const pickState = {
-      ...payload.state,
-      tasks: Array.isArray(payload.state?.tasks)
-        ? payload.state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status))
-        : [],
+      energy: payload.state?.energy,
+      calendarBlocks: Array.isArray(payload.state?.calendarBlocks) ? payload.state.calendarBlocks : [],
+      tasks: candidates.map((task) => ({
+        id: task.id, title: task.title, notes: task.notes, status: task.status, kind: task.kind, taskType: task.taskType,
+        project: task.project, area: task.area, chapter: task.chapter, feature: task.feature, tags: task.tags,
+        estimateMinutes: task.estimateMinutes, streamFriendly: task.streamFriendly, visual: task.visual, deepWork: task.deepWork,
+        blocking: task.blocking, deferredUntil: task.deferredUntil, checklist: task.checklist,
+      })),
     };
-    const response = await client.responses.create({
+    const request = client.responses.create({
       model: settings.model,
       instructions: `${DIRECTOR_PROMPT}\n${REYTRIEVE_CONTEXT}`,
-      input: `Сейчас ${new Date().toISOString()}. Выбери ОДНУ следующую задачу для режима "${payload.mode}".\nНе выбирай задачу, если deferredUntil ещё в будущем. Completed, archived и inbox уже исключены из STATE.\nВерни ТОЛЬКО JSON без markdown: {"taskId":"...","taskTitle":"...","why":"1-2 предложения","caution":"необязательное замечание","estimatedMinutes":90}.\nНе придумывай taskId. Выбирай только из данных.\n\nSTATE:\n${JSON.stringify(pickState, null, 2)}`,
+      input: `Сейчас ${new Date().toISOString()}. Выбери ОДНУ следующую задачу для режима "${payload.mode}".\nЭто reroll-safe выбор: задачи из excludeTaskIds уже исключены и нельзя возвращать прошлый вариант.\nДля stream выбирай только действительно stream-friendly работу, если такая есть; для work предпочитай полезную системную/off-stream работу, сохраняя визуальные задачи на стрим.\nВерни ТОЛЬКО JSON без markdown: {"taskId":"...","taskTitle":"...","why":"1-2 предложения","caution":"необязательное замечание","estimatedMinutes":90}.\nНе придумывай taskId. Выбирай только из STATE.\n\nSTATE:\n${JSON.stringify(pickState, null, 2)}`,
     });
+    const response = await Promise.race([
+      request,
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Director pick AI timeout")), 15000)),
+    ]);
     const pick = parseJsonObject(response.output_text);
-    return pick ? { pick } : { offline: true };
+    if (!pick?.taskId || !candidates.some((task) => String(task.id) === String(pick.taskId))) return { offline: true };
+    return { pick };
   } catch (error) {
     console.error("Director pick error:", error);
     return { offline: true };

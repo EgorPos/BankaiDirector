@@ -1,12 +1,17 @@
-# Director Desktop v0.7.2
+# Director v0.8.0
 
-## Stream reminder reliability hotfix
+**Database schema:** 6 (без новой миграции)
 
-- Fixed Stream Prep sound: the previous implementation relied on a non-existent Electron `shell.beep()` path.
-- Added a bundled two-tone alert sound that the popup plays itself.
-- Stream popup now force-shows/focuses with ready/load/fallback paths instead of relying on one event.
-- Scheduler checks every 15 seconds and retries if a due popup unexpectedly vanished.
-- Closing the popup with X now snoozes it instead of silently killing the reminder for the rest of the day.
-- Changing today's prep time clears stale shown/snoozed state so the new time can fire.
-- Settings now shows Director clock, next reminder, today's reminder state, and reminder debug-log path.
-- Added `director-reminder.log` for diagnosing future missed reminders.
+### Planner
+- Instant local pick: очередь больше не остаётся пустой из-за AI/network timeout.
+- AI уточняет уже показанный локальный выбор в фоне.
+- `Another one` исключает текущий и недавние варианты (до 10) и реально рероллит очередь.
+- Stream mode сильнее предпочитает stream-friendly + visual и избегает deep-work/off-stream.
+- Focus mode слегка сохраняет зрелищные stream-friendly задачи на стрим.
+
+### AI Backlog Pass
+- Один проход по активному backlog (до 220 задач, батчи по 20).
+- Назначает stream/off-stream, 2–8 тегов, estimate, taskType, visual, deepWork, blocking.
+- Не меняет title/id/chapter/area/feature.
+- Без API есть локальный fallback; приложение явно сообщает, что это не полноценный AI-pass.
+- Tasks UI: Stream / Off-stream / Untagged фильтры и статистика.
