@@ -1,7 +1,8 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CURRENT_SCHEMA_VERSION = 5;
+const CURRENT_SCHEMA_VERSION = 6;
+const { seedMiroTasks } = require('./miro-seed.cjs');
 
 function tableExists(db, name) {
   const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(name);
@@ -140,6 +141,9 @@ const migrations = {
       ALTER TABLE tasks ADD COLUMN archived_at TEXT;
       CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     `);
+  },
+  6(db) {
+    seedMiroTasks(db);
   },
 };
 

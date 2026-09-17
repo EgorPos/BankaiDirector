@@ -1,7 +1,7 @@
 {
   "name": "life-director",
   "productName": "Director",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Local-first personal director for work, life and solo game development.",
   "main": "electron/main.cjs",

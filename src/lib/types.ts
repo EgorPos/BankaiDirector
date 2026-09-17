@@ -35,7 +35,7 @@ export interface Task {
   aiReason?: string;
   classificationReason?: string;
   classificationConfidence?: number;
-  source?: "manual" | "import" | "seed";
+  source?: "manual" | "import" | "seed" | "miro";
 }
 
 export interface RoutineItem {
