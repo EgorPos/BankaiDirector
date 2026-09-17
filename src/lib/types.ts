@@ -1,5 +1,5 @@
 export type Energy = "full" | "normal" | "low" | "dead";
-export type TaskStatus = "inbox" | "todo" | "active" | "done" | "deferred";
+export type TaskStatus = "inbox" | "todo" | "active" | "done" | "deferred" | "archived";
 export type TaskKind = "dev" | "stream" | "personal" | "work" | "admin";
 export type TaskType = "bug" | "feature" | "polish" | "art" | "ui" | "vfx" | "animation" | "design" | "admin" | "personal" | "work" | "other";
 
@@ -29,6 +29,7 @@ export interface Task {
   blocking?: boolean;
   createdAt: string;
   completedAt?: string;
+  archivedAt?: string;
   deferredUntil?: string;
   deferReason?: string;
   aiReason?: string;

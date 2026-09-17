@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CURRENT_SCHEMA_VERSION = 4;
+const CURRENT_SCHEMA_VERSION = 5;
 
 function tableExists(db, name) {
   const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(name);
@@ -133,6 +133,12 @@ const migrations = {
   4(db) {
     db.exec(`
       ALTER TABLE tasks ADD COLUMN checklist_json TEXT;
+    `);
+  },
+  5(db) {
+    db.exec(`
+      ALTER TABLE tasks ADD COLUMN archived_at TEXT;
+      CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
     `);
   },
 };

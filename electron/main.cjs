@@ -235,6 +235,7 @@ function loadAppState() {
     blocking: r.blocking === null ? undefined : Boolean(r.blocking),
     createdAt: r.created_at,
     completedAt: r.completed_at || undefined,
+    archivedAt: r.archived_at || undefined,
     deferredUntil: r.deferred_until || undefined,
     deferReason: r.defer_reason || undefined,
     aiReason: r.ai_reason || undefined,
@@ -290,15 +291,15 @@ function saveAppState(state) {
     db.exec("DELETE FROM tasks; DELETE FROM routine_items; DELETE FROM routines; DELETE FROM chat_messages; DELETE FROM calendar_blocks;");
     const insertTask = db.prepare(`INSERT INTO tasks (
       id,title,notes,checklist_json,status,kind,task_type,project,area,chapter,feature,tags_json,estimate_minutes,
-      stream_friendly,visual,deep_work,blocking,created_at,completed_at,deferred_until,defer_reason,
+      stream_friendly,visual,deep_work,blocking,created_at,completed_at,archived_at,deferred_until,defer_reason,
       ai_reason,classification_reason,classification_confidence,source
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     for (const t of state.tasks) {
       insertTask.run(
         t.id, t.title, t.notes || null, t.checklist ? JSON.stringify(t.checklist) : null, t.status, t.kind, t.taskType || null, t.project || null, t.area || null,
         t.chapter || null, t.feature || null, t.tags ? JSON.stringify(t.tags) : null, t.estimateMinutes ?? null,
         nullableBool(t.streamFriendly), nullableBool(t.visual), nullableBool(t.deepWork), nullableBool(t.blocking),
-        t.createdAt, t.completedAt || null, t.deferredUntil || null, t.deferReason || null, t.aiReason || null,
+        t.createdAt, t.completedAt || null, t.archivedAt || null, t.deferredUntil || null, t.deferReason || null, t.aiReason || null,
         t.classificationReason || null, t.classificationConfidence ?? null, t.source || null
       );
     }
@@ -891,10 +892,16 @@ ipcMain.handle("director:pick", async (_event, payload) => {
   try {
     const { client, settings } = await getOpenAIClient();
     if (!client) return { offline: true };
+    const pickState = {
+      ...payload.state,
+      tasks: Array.isArray(payload.state?.tasks)
+        ? payload.state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status))
+        : [],
+    };
     const response = await client.responses.create({
       model: settings.model,
       instructions: `${DIRECTOR_PROMPT}\n${REYTRIEVE_CONTEXT}`,
-      input: `Сейчас ${new Date().toISOString()}. Выбери ОДНУ следующую задачу для режима "${payload.mode}".\nНе выбирай задачу, если deferredUntil ещё в будущем.\nВерни ТОЛЬКО JSON без markdown: {"taskId":"...","taskTitle":"...","why":"1-2 предложения","caution":"необязательное замечание","estimatedMinutes":90}.\nНе придумывай taskId. Выбирай только из данных.\n\nSTATE:\n${JSON.stringify(payload.state, null, 2)}`,
+      input: `Сейчас ${new Date().toISOString()}. Выбери ОДНУ следующую задачу для режима "${payload.mode}".\nНе выбирай задачу, если deferredUntil ещё в будущем. Completed, archived и inbox уже исключены из STATE.\nВерни ТОЛЬКО JSON без markdown: {"taskId":"...","taskTitle":"...","why":"1-2 предложения","caution":"необязательное замечание","estimatedMinutes":90}.\nНе придумывай taskId. Выбирай только из данных.\n\nSTATE:\n${JSON.stringify(pickState, null, 2)}`,
     });
     const pick = parseJsonObject(response.output_text);
     return pick ? { pick } : { offline: true };

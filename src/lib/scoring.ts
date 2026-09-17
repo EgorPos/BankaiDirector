@@ -53,10 +53,10 @@ function scoreTask(task: Task, state: AppState, mode: "work" | "stream" | "short
 }
 
 export function localDirectorPick(state: AppState, mode: "work" | "stream" | "short" | "visual" = "work"): DirectorPick | null {
-  const candidates = state.tasks.filter((t) => t.status !== "done" && t.status !== "inbox" && !isDeferredForFuture(t));
+  const candidates = state.tasks.filter((t) => !["done", "archived", "inbox"].includes(t.status) && !isDeferredForFuture(t));
   if (!candidates.length) return null;
   const task = [...candidates].sort((a, b) => scoreTask(b, state, mode) - scoreTask(a, state, mode))[0];
-  const reasons = [];
+  const reasons: string[] = [];
   if (task.status === "active") reasons.push("ты уже начал её — меньше потерь на переключение контекста");
   if (task.blocking) reasons.push("она блокирует дальнейшую работу, поэтому её выгоднее закрыть раньше");
   if (task.project === "Reytrieve Odyssey") reasons.push("она двигает основной проект");

@@ -69,7 +69,7 @@ function MainDirectorApp() {
     };
   }, [state, loaded]);
 
-  const activeTasks = useMemo(() => state.tasks.filter((t) => t.status !== "done" && t.status !== "inbox"), [state.tasks]);
+  const activeTasks = useMemo(() => state.tasks.filter((t) => !["done", "archived", "inbox"].includes(t.status)), [state.tasks]);
   const completedToday = useMemo(() => {
     const today = new Date().toDateString();
     return state.tasks.filter((t) => t.completedAt && new Date(t.completedAt).toDateString() === today).length;
@@ -96,7 +96,13 @@ function MainDirectorApp() {
 
   function startPick() {
     if (!pick) return;
-    updateTask(pick.taskId, { status: "active" });
+    updateTask(pick.taskId, { status: "active", completedAt: undefined, archivedAt: undefined });
+  }
+
+  function finishPick() {
+    if (!pick) return;
+    updateTask(pick.taskId, { status: "done", completedAt: new Date().toISOString(), archivedAt: undefined });
+    setPick(null);
   }
 
   function deferPick(reason: string, hours: number) {
@@ -143,6 +149,7 @@ function MainDirectorApp() {
             mode={pickMode}
             askDirector={askDirector}
             startPick={startPick}
+            finishPick={finishPick}
             deferPick={deferPick}
             setView={setView}
             updateTask={updateTask}
@@ -167,7 +174,7 @@ function EnergyPicker({ value, onChange }: { value: Energy; onChange: (v: Energy
   );
 }
 
-function TodayView({ state, completedToday, pick, thinking, mode, askDirector, startPick, deferPick, setView, updateTask }: {
+function TodayView({ state, completedToday, pick, thinking, mode, askDirector, startPick, finishPick, deferPick, setView, updateTask }: {
   state: AppState;
   completedToday: number;
   pick: DirectorPick | null;
@@ -175,11 +182,13 @@ function TodayView({ state, completedToday, pick, thinking, mode, askDirector, s
   mode: PickMode;
   askDirector: (m?: PickMode) => void;
   startPick: () => void;
+  finishPick: () => void;
   deferPick: (reason: string, hours: number) => void;
   setView: (v: View) => void;
   updateTask: (id: string, patch: Partial<Task>) => void;
 }) {
   const active = state.tasks.find((t) => t.status === "active");
+  const selectedTask = pick ? state.tasks.find((t) => t.id === pick.taskId) : undefined;
   const [showDefer, setShowDefer] = useState(false);
   const [deferReason, setDeferReason] = useState("Работа затянулась");
 
@@ -199,7 +208,8 @@ function TodayView({ state, completedToday, pick, thinking, mode, askDirector, s
             <small>NEXT TASK</small><h2>{pick.taskTitle}</h2>
             {pick.estimatedMinutes && <div className="time-chip">~ {formatMinutes(pick.estimatedMinutes)}</div>}
             <p className="why"><b>Почему:</b> {pick.why}</p>{pick.caution && <p className="caution">{pick.caution}</p>}
-            <div className="actions"><button className="primary" onClick={startPick}>▶ Start</button><button onClick={() => askDirector(mode)}>Another one</button><button onClick={() => setShowDefer(true)}>Life happened</button></div>
+            {selectedTask && <InlineTaskChecklist task={selectedTask} updateTask={updateTask} />}
+            <div className="actions"><button className="primary" onClick={startPick}>▶ Start</button><button onClick={finishPick}>✓ Done</button><button onClick={() => askDirector(mode)}>Another one</button><button onClick={() => setShowDefer(true)}>Life happened</button></div>
             {showDefer && <div className="defer-box"><label><span>Что произошло?</span><input value={deferReason} onChange={(e) => setDeferReason(e.target.value)} /></label><div className="actions"><button onClick={() => doDefer(2)}>Через 2 часа</button><button onClick={() => doDefer(24)}>Завтра</button><button onClick={() => doDefer(72)}>Через 3 дня</button><button className="text-button" onClick={() => setShowDefer(false)}>Отмена</button></div></div>}
           </div>
         )}
@@ -213,15 +223,47 @@ function TodayView({ state, completedToday, pick, thinking, mode, askDirector, s
 
       <section className="stat-row">
         <div className="stat"><small>ENERGY</small><strong>{energyLabels[state.energy]}</strong></div>
-        <div className="stat"><small>OPEN TASKS</small><strong>{state.tasks.filter((t) => !["done", "inbox"].includes(t.status)).length}</strong></div>
+        <div className="stat"><small>OPEN TASKS</small><strong>{state.tasks.filter((t) => !["done", "archived", "inbox"].includes(t.status)).length}</strong></div>
         <div className="stat"><small>DONE TODAY</small><strong>{completedToday}</strong></div>
       </section>
 
-      {active && <section className="panel active-task"><div><small>NOW WORKING ON</small><h3>{active.title}</h3></div><div className="actions"><button onClick={() => updateTask(active.id, { status: "done", completedAt: new Date().toISOString() })}>✓ Done</button><button onClick={() => updateTask(active.id, { status: "todo" })}>Stop</button></div></section>}
+      {active && <section className="panel active-task-card">
+        <div className="active-task">
+          <div><small>NOW WORKING ON</small><h3>{active.title}</h3></div>
+          <div className="actions"><button className="primary" onClick={() => updateTask(active.id, { status: "done", completedAt: new Date().toISOString(), archivedAt: undefined })}>✓ Done</button><button onClick={() => updateTask(active.id, { status: "todo", completedAt: undefined })}>Stop</button></div>
+        </div>
+        <InlineTaskChecklist task={active} updateTask={updateTask} compact />
+      </section>}
 
       <TodaySchedule blocks={state.calendarBlocks} onOpenCalendar={() => setView("calendar")} />
 
       <section className="panel"><div className="panel-head"><div><small>ROUTINE</small><h3>Stream Prep</h3></div><div className="actions"><button className="text-button" onClick={() => window.directorBridge.openStreamPrep()}>Open popup</button><button className="text-button" onClick={() => setView("routines")}>Edit →</button></div></div>{state.routines.find((r) => r.id === "stream-prep")?.items.slice(0, 5).map((item) => <div key={item.id} className="mini-check"><span className={item.checked ? "check checked" : "check"}>{item.checked ? "✓" : ""}</span><span>{item.text}</span></div>)}</section>
+    </div>
+  );
+}
+
+function InlineTaskChecklist({ task, updateTask, compact = false }: { task: Task; updateTask: (id: string, patch: Partial<Task>) => void; compact?: boolean }) {
+  const checklist = task.checklist || [];
+  if (!checklist.length) return null;
+  const done = checklist.filter((item) => item.checked).length;
+
+  function toggle(id: string) {
+    updateTask(task.id, {
+      checklist: checklist.map((item) => item.id === id ? { ...item, checked: !item.checked } : item),
+    });
+  }
+
+  return (
+    <div className={compact ? "inline-task-checklist compact" : "inline-task-checklist"}>
+      <div className="inline-checklist-head"><small>CHECKLIST</small><strong>{done}/{checklist.length}</strong></div>
+      <div className="inline-checklist-items">
+        {checklist.map((item) => (
+          <button key={item.id} className={item.checked ? "inline-check-item checked" : "inline-check-item"} onClick={() => toggle(item.id)}>
+            <span className={item.checked ? "check checked" : "check"}>{item.checked ? "✓" : ""}</span>
+            <span>{item.text}</span>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -368,7 +410,7 @@ function CalendarView({ state, setState }: { state: AppState; setState: React.Di
 }
 function TasksView({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
   const [title, setTitle] = useState("");
-  const [filter, setFilter] = useState<"open" | "done" | "all">("open");
+  const [filter, setFilter] = useState<"active" | "completed" | "archive" | "all">("active");
   const [classifyingId, setClassifyingId] = useState<string | null>(null);
 
   async function addTask() {
@@ -390,14 +432,35 @@ function TasksView({ state, setState }: { state: AppState; setState: React.Dispa
     }
   }
 
-  const tasks = state.tasks.filter((t) => filter === "all" || (filter === "done" ? t.status === "done" : t.status !== "done"));
+  const tasks = state.tasks.filter((task) => {
+    if (task.status === "inbox") return false;
+    if (filter === "completed") return task.status === "done";
+    if (filter === "archive") return task.status === "archived";
+    if (filter === "active") return !["done", "archived"].includes(task.status);
+    return true;
+  });
+
+  const counts = {
+    active: state.tasks.filter((task) => !["done", "archived", "inbox"].includes(task.status)).length,
+    completed: state.tasks.filter((task) => task.status === "done").length,
+    archive: state.tasks.filter((task) => task.status === "archived").length,
+    all: state.tasks.filter((task) => task.status !== "inbox").length,
+  };
+
+  const labels: Record<typeof filter, string> = {
+    active: "Active",
+    completed: "Completed",
+    archive: "Archive",
+    all: "All",
+  };
+
   return (
     <div className="page-stack">
       <section className="quick-add"><input value={title} onChange={(e) => setTitle(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void addTask()} placeholder="Просто напиши задачу. Важность и контекст Director разберёт сам." /><button className="primary" onClick={() => void addTask()}>+ Add</button></section>
-      <div className="filter-row">{(["open", "done", "all"] as const).map((f) => <button key={f} className={filter === f ? "chip active" : "chip"} onClick={() => setFilter(f)}>{f}</button>)}{classifyingId && <span className="inline-status">Director разбирает новую задачу…</span>}</div>
+      <div className="filter-row">{(["active", "completed", "archive", "all"] as const).map((f) => <button key={f} className={filter === f ? "chip active" : "chip"} onClick={() => setFilter(f)}>{labels[f]} <span className="chip-count">{counts[f]}</span></button>)}{classifyingId && <span className="inline-status">Director разбирает новую задачу…</span>}</div>
       <section className="task-list">
         {tasks.map((task) => <TaskRow key={task.id} task={task} update={(patch) => setState((s) => ({ ...s, tasks: s.tasks.map((t) => t.id === task.id ? { ...t, ...patch } : t) }))} remove={() => setState((s) => ({ ...s, tasks: s.tasks.filter((t) => t.id !== task.id) }))} />)}
-        {!tasks.length && <div className="empty-list">Здесь пока пусто.</div>}
+        {!tasks.length && <div className="empty-list">{filter === "archive" ? "Архив пуст. Сюда можно убирать отменённые и больше не актуальные задачи." : filter === "completed" ? "Пока нет завершённых задач." : "Здесь пока пусто."}</div>}
       </section>
     </div>
   );
@@ -409,6 +472,8 @@ function TaskRow({ task, update, remove }: { task: Task; update: (p: Partial<Tas
   const deferredText = task.status === "deferred" && task.deferredUntil ? `до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(task.deferredUntil))}` : undefined;
   const checklist = task.checklist || [];
   const doneCount = checklist.filter((item) => item.checked).length;
+  const isDone = task.status === "done";
+  const isArchived = task.status === "archived";
 
   function addChecklistItem() {
     const text = newItem.trim();
@@ -425,22 +490,49 @@ function TaskRow({ task, update, remove }: { task: Task; update: (p: Partial<Tas
     update({ checklist: checklist.filter((item) => item.id !== id) });
   }
 
+  function setStatus(status: Task["status"]) {
+    if (status === "done") {
+      update({ status, completedAt: new Date().toISOString(), archivedAt: undefined });
+      return;
+    }
+    if (status === "archived") {
+      update({ status, archivedAt: new Date().toISOString(), completedAt: undefined, deferredUntil: undefined, deferReason: undefined });
+      return;
+    }
+    update({ status, completedAt: undefined, archivedAt: undefined });
+  }
+
+  function confirmRemove() {
+    if (window.confirm(`Удалить задачу навсегда?\n\n${task.title}`)) remove();
+  }
+
   return (
-    <div className={task.status === "done" ? "task-row-wrap done" : "task-row-wrap"}>
+    <div className={`task-row-wrap ${isDone ? "done" : ""} ${isArchived ? "archived" : ""}`}>
       <div className="task-row">
-        <button className={task.status === "done" ? "task-check checked" : "task-check"} onClick={() => update(task.status === "done" ? { status: "todo", completedAt: undefined } : { status: "done", completedAt: new Date().toISOString() })}>{task.status === "done" ? "✓" : ""}</button>
+        {isArchived ? (
+          <button className="task-check restore-check" title="Restore" onClick={() => setStatus("todo")}>↺</button>
+        ) : (
+          <button className={isDone ? "task-check checked" : "task-check"} onClick={() => setStatus(isDone ? "todo" : "done")}>{isDone ? "✓" : ""}</button>
+        )}
         <div className="task-main" onClick={() => setExpanded((v) => !v)}>
           <strong>{task.title}</strong>
-          <div className="task-meta">{task.project && <span>{task.project}</span>}{task.area && <span>{task.area}</span>}{task.feature && <span>{task.feature}</span>}{task.taskType && <span>{task.taskType}</span>}{task.estimateMinutes && <span>~{formatMinutes(task.estimateMinutes)}</span>}{task.blocking && <span className="meta-hot">blocker</span>}{task.streamFriendly && <span>stream</span>}{checklist.length > 0 && <span>☑ {doneCount}/{checklist.length}</span>}{deferredText && <span>deferred {deferredText}</span>}</div>
+          <div className="task-meta">{task.project && <span>{task.project}</span>}{task.chapter && <span>{task.chapter}</span>}{task.area && <span>{task.area}</span>}{task.feature && <span>{task.feature}</span>}{task.taskType && <span>{task.taskType}</span>}{task.estimateMinutes && <span>~{formatMinutes(task.estimateMinutes)}</span>}{task.blocking && <span className="meta-hot">blocker</span>}{task.streamFriendly && <span>stream</span>}{checklist.length > 0 && <span>☑ {doneCount}/{checklist.length}</span>}{deferredText && <span>deferred {deferredText}</span>}{isArchived && <span>archived</span>}</div>
           {task.notes && <p className="task-note-preview">{task.notes}</p>}
         </div>
         <button className="task-details-button" onClick={() => setExpanded((v) => !v)}>{expanded ? "Close" : "Details"}</button>
-        <select value={task.status} onChange={(e) => update({ status: e.target.value as Task["status"] })}><option value="todo">Todo</option><option value="active">Active</option><option value="deferred">Deferred</option><option value="done">Done</option></select>
-        <button className="danger-text" onClick={remove}>×</button>
+        {isArchived ? <button onClick={() => setStatus("todo")}>Restore</button> : <button onClick={() => setStatus("archived")}>Archive</button>}
+        <select value={task.status} onChange={(e) => setStatus(e.target.value as Task["status"])}><option value="todo">Todo</option><option value="active">Active</option><option value="deferred">Deferred</option><option value="done">Done</option><option value="archived">Archived</option></select>
+        <button className="danger-text" title="Delete permanently" onClick={confirmRemove}>×</button>
       </div>
       {expanded && <div className="task-details">
+        <div className="task-structure-grid">
+          <label><span>Project</span><input value={task.project || ""} onChange={(e) => update({ project: e.target.value || undefined })} placeholder="Reytrieve Odyssey" /></label>
+          <label><span>Chapter</span><input value={task.chapter || ""} onChange={(e) => update({ chapter: e.target.value || undefined })} placeholder="Chapter 1" /></label>
+          <label><span>Area / Act</span><input value={task.area || ""} onChange={(e) => update({ area: e.target.value || undefined })} placeholder="Act 4 — Bag Shop" /></label>
+          <label><span>Feature / Group</span><input value={task.feature || ""} onChange={(e) => update({ feature: e.target.value || undefined })} placeholder="HUB Items / Boss / UI…" /></label>
+        </div>
         <label><span>Описание / заметки</span><textarea value={task.notes || ""} onChange={(e) => update({ notes: e.target.value })} placeholder="Что именно надо сделать, ссылки, детали, мысли…" /></label>
-        <div className="task-checklist-head"><div><small>CHECKLIST</small><strong>{doneCount}/{checklist.length}</strong></div></div>
+        <div className="task-checklist-head"><div><small>CHECKLIST</small><strong>{doneCount}/{checklist.length}</strong></div><div className="actions">{isArchived ? <button onClick={() => setStatus("todo")}>↺ Restore to Active</button> : <button onClick={() => setStatus("archived")}>Archive task</button>}</div></div>
         <div className="task-subtasks">
           {checklist.map((item) => <div className="task-subtask" key={item.id}><button className={item.checked ? "task-check checked" : "task-check"} onClick={() => patchChecklistItem(item.id, { checked: !item.checked })}>{item.checked ? "✓" : ""}</button><input value={item.text} onChange={(e) => patchChecklistItem(item.id, { text: e.target.value })} /><button className="danger-text" onClick={() => removeChecklistItem(item.id)}>×</button></div>)}
           {!checklist.length && <p className="settings-copy">Можно разбить задачу на маленькие шаги. Это не отдельные задачи Director — это чеклист внутри неё.</p>}

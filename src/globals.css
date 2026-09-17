@@ -250,3 +250,29 @@ input, textarea { width: 100%; background: #0f0c15; border: 1px solid var(--line
   .task-details { margin-left: 12px; margin-right: 12px; }
   .task-details-button { display: none; }
 }
+
+/* v0.7 — completed/archive task library + interactive picked-task checklist */
+.chip-count { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; margin-left: 5px; padding: 0 5px; border-radius: 999px; background: #17121f; color: #9e91ad; font-size: 10px; }
+.task-row-wrap.archived { opacity: .72; background: #0b0910; }
+.task-row-wrap.archived .task-main > strong { color: #aaa0b6; }
+.restore-check { color: #cbb7ff; border-color: #5b4678; font-size: 13px; }
+.inline-task-checklist { margin: 14px 0 4px; padding: 13px; border: 1px solid #3d3150; border-radius: 13px; background: #100c17; display: grid; gap: 9px; }
+.inline-task-checklist.compact { margin: 14px 0 0; }
+.inline-checklist-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.inline-checklist-head small { color: var(--muted); font-weight: 800; letter-spacing: .06em; }
+.inline-checklist-head strong { font-size: 12px; color: #cbbbe0; }
+.inline-checklist-items { display: grid; gap: 6px; }
+.inline-check-item { width: 100%; display: grid; grid-template-columns: 22px 1fr; gap: 9px; align-items: center; text-align: left; padding: 8px 9px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #d7cfdf; }
+.inline-check-item:hover { transform: none; background: #17111f; border-color: #382a4a; }
+.inline-check-item.checked { color: #8f879b; text-decoration: line-through; }
+.active-task-card { display: grid; gap: 2px; }
+.active-task-card .active-task { padding: 0; }
+.task-checklist-head .actions { margin-left: auto; }
+@media (max-width: 760px) {
+  .filter-row { flex-wrap: wrap; }
+  .task-row { gap: 8px; }
+  .task-row > button:not(.task-check):not(.task-details-button):not(.danger-text) { display: none; }
+}
+.task-structure-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.task-structure-grid input { width: 100%; }
+@media (max-width: 760px) { .task-structure-grid { grid-template-columns: 1fr; } }
