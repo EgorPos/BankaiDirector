@@ -1,4 +1,4 @@
-import type { AppState, DirectorPick, DirectorSettings, ImportSuggestion, Task, UpdateState } from "./lib/types";
+import type { AppState, DirectorPick, DirectorSettings, ImportSuggestion, ReminderStatus, Task, UpdateState } from "./lib/types";
 
 export {};
 
@@ -28,7 +28,8 @@ declare global {
       }>;
       openDataFolder: () => Promise<void>;
       openStreamPrep: () => Promise<void>;
-      streamAction: (action: "snooze" | "complete" | "skip") => Promise<{ ok: boolean }>;
+      streamAction: (action: "snooze" | "dismiss" | "complete" | "skip") => Promise<{ ok: boolean }>;
+      getReminderStatus: () => Promise<ReminderStatus>;
       closeCurrentWindow: () => Promise<void>;
       getUpdateState: () => Promise<UpdateState>;
       checkForUpdates: () => Promise<UpdateState>;

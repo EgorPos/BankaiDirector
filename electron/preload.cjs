@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld("directorBridge", {
   openDataFolder: () => ipcRenderer.invoke("director:open-data-folder"),
   openStreamPrep: () => ipcRenderer.invoke("director:open-stream-prep"),
   streamAction: (action) => ipcRenderer.invoke("director:stream-action", action),
+  getReminderStatus: () => ipcRenderer.invoke("director:reminder-status"),
   closeCurrentWindow: () => ipcRenderer.invoke("director:close-current-window"),
   getUpdateState: () => ipcRenderer.invoke("director:update-state"),
   checkForUpdates: () => ipcRenderer.invoke("director:check-updates"),

@@ -6,6 +6,9 @@ const { DIRECTOR_PROMPT, REYTRIEVE_CONTEXT } = require("./context.cjs");
 const { CURRENT_SCHEMA_VERSION, runDatabaseMigrations } = require("./migrations.cjs");
 const { createUpdateManager } = require("./updater.cjs");
 
+// Allow the dedicated Stream Prep window to play its bundled alert sound immediately.
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 let mainWindow;
 let streamPrepWindow;
 let tray;
@@ -487,8 +490,12 @@ function createMainWindow() {
 
 function createStreamPrepWindow() {
   if (streamPrepWindow && !streamPrepWindow.isDestroyed()) {
+    streamPrepWindow.setAlwaysOnTop(true, "floating");
     streamPrepWindow.show();
+    streamPrepWindow.restore();
+    streamPrepWindow.moveTop();
     streamPrepWindow.focus();
+    appendReminderDebug("popup-existing-shown");
     return streamPrepWindow;
   }
 
@@ -512,11 +519,28 @@ function createStreamPrepWindow() {
     },
   });
   streamPrepWindow.setAlwaysOnTop(true, "floating");
-  streamPrepWindow.once("ready-to-show", () => {
+
+  let didShow = false;
+  const forceShow = (reason) => {
+    if (!streamPrepWindow || streamPrepWindow.isDestroyed()) return;
+    didShow = true;
+    streamPrepWindow.setAlwaysOnTop(true, "floating");
     streamPrepWindow.show();
+    streamPrepWindow.restore();
+    streamPrepWindow.moveTop();
     streamPrepWindow.focus();
+    appendReminderDebug("popup-shown", { reason });
+  };
+
+  streamPrepWindow.once("ready-to-show", () => forceShow("ready-to-show"));
+  streamPrepWindow.webContents.once("did-finish-load", () => forceShow("did-finish-load"));
+  const fallbackTimer = setTimeout(() => {
+    if (!didShow) forceShow("fallback-timeout");
+  }, 2500);
+  streamPrepWindow.on("closed", () => {
+    clearTimeout(fallbackTimer);
+    streamPrepWindow = null;
   });
-  streamPrepWindow.on("closed", () => { streamPrepWindow = null; });
   loadWindowContent(streamPrepWindow, { popup: "stream-prep" });
   return streamPrepWindow;
 }
@@ -540,6 +564,58 @@ function localDateKey(date = new Date()) {
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function reminderDebugPath() {
+  return path.join(app.getPath("userData"), "director-reminder.log");
+}
+
+function appendReminderDebug(message, details = {}) {
+  try {
+    fs.appendFileSync(
+      reminderDebugPath(),
+      `${new Date().toISOString()} ${message} ${JSON.stringify(details)}\n`,
+      "utf8"
+    );
+  } catch {}
+}
+
+function nextReminderOccurrence(settingsInput, from = new Date()) {
+  const settings = settingsInput || readSettings();
+  if (!settings.streamReminderEnabled || !settings.streamReminderDays.length) return null;
+  for (let offset = 0; offset <= 8; offset += 1) {
+    const candidate = new Date(from);
+    candidate.setDate(from.getDate() + offset);
+    const [h, m] = normalizeTime(settings.streamReminderTime).split(":").map(Number);
+    candidate.setHours(h, m, 0, 0);
+    if (!settings.streamReminderDays.includes(candidate.getDay())) continue;
+    if (candidate > from) return candidate;
+  }
+  return null;
+}
+
+function getReminderStatus() {
+  const settings = readSettings();
+  const now = new Date();
+  const occurrence = localDateKey(now);
+  const scheduledToday = scheduledDateForToday(settings.streamReminderTime, now);
+  const log = getReminderLog("stream-prep", occurrence);
+  const next = nextReminderOccurrence(settings, now);
+  return {
+    enabled: settings.streamReminderEnabled,
+    now: now.toISOString(),
+    todayIsReminderDay: settings.streamReminderDays.includes(now.getDay()),
+    scheduledToday: scheduledToday.toISOString(),
+    nextAt: next ? next.toISOString() : null,
+    todayLog: log ? {
+      status: log.status,
+      scheduledFor: log.scheduled_for || null,
+      shownAt: log.shown_at || null,
+      snoozedUntil: log.snoozed_until || null,
+      completedAt: log.completed_at || null,
+    } : null,
+    debugLogPath: reminderDebugPath(),
+  };
 }
 
 function scheduledDateForToday(timeText, now = new Date()) {
@@ -573,13 +649,12 @@ function upsertReminderLog(kind, occurrenceDate, patch) {
 
 function notifyStreamPrep() {
   if (Notification.isSupported()) {
-    const settings = readSettings();
-    const hasExplicitBeep = typeof shell.beep === "function";
     const notification = new Notification({
       title: "Director — Stream Prep",
       body: "Пора подготовиться к стриму. Чеклист уже открыт.",
       icon: appIconPath(),
-      silent: settings.popupSoundEnabled ? hasExplicitBeep : true,
+      // The popup itself plays a bundled sound. Keeping the Windows toast silent avoids a double ding.
+      silent: true,
     });
     notification.on("click", () => createStreamPrepWindow());
     notification.show();
@@ -616,27 +691,32 @@ function syncStreamCalendar(settingsInput) {
 }
 
 function playPopupSound() {
-  const settings = readSettings();
-  if (!settings.popupSoundEnabled) return;
-  try {
-    if (typeof shell.beep === "function") shell.beep();
-  } catch (error) {
-    console.warn("Could not play popup sound:", error);
-  }
+  // Sound is played by the Stream Prep renderer from /stream-alert.wav.
+  // Electron's shell module does not expose a reliable beep API.
 }
 
-function showStreamReminder(now = new Date()) {
+function showStreamReminder(now = new Date(), reason = "scheduled") {
   const occurrence = localDateKey(now);
   const scheduled = scheduledDateForToday(readSettings().streamReminderTime, now);
-  upsertReminderLog("stream-prep", occurrence, {
-    status: "shown",
-    scheduled_for: scheduled.toISOString(),
-    shown_at: now.toISOString(),
-    snoozed_until: null,
-  });
-  playPopupSound();
-  notifyStreamPrep();
-  createStreamPrepWindow();
+  appendReminderDebug("reminder-trigger", { reason, occurrence, scheduled: scheduled.toISOString() });
+  try {
+    createStreamPrepWindow();
+    notifyStreamPrep();
+    upsertReminderLog("stream-prep", occurrence, {
+      status: "shown",
+      scheduled_for: scheduled.toISOString(),
+      shown_at: now.toISOString(),
+      snoozed_until: null,
+    });
+  } catch (error) {
+    appendReminderDebug("reminder-trigger-error", { message: error?.message || String(error) });
+    upsertReminderLog("stream-prep", occurrence, {
+      status: "retry",
+      scheduled_for: scheduled.toISOString(),
+      shown_at: now.toISOString(),
+      snoozed_until: null,
+    });
+  }
 }
 
 function checkStreamReminder() {
@@ -650,13 +730,29 @@ function checkStreamReminder() {
   const occurrence = localDateKey(now);
   const log = getReminderLog("stream-prep", occurrence);
   if (!log) {
-    showStreamReminder(now);
+    showStreamReminder(now, "first-due-check");
     return;
   }
-  if (log.status === "completed" || log.status === "skipped" || log.status === "shown") return;
+  if (log.status === "completed" || log.status === "skipped") return;
   if (log.status === "snoozed") {
     const until = log.snoozed_until ? new Date(log.snoozed_until) : null;
-    if (!until || now >= until) showStreamReminder(now);
+    if (!until || now >= until) showStreamReminder(now, "snooze-ended");
+    return;
+  }
+  if (log.status === "retry") {
+    const last = log.shown_at ? new Date(log.shown_at) : null;
+    if (!last || now.getTime() - last.getTime() >= 30_000) showStreamReminder(now, "retry-after-error");
+    return;
+  }
+  if (log.status === "shown") {
+    // If the popup is genuinely open, all good. If it vanished unexpectedly without a user action,
+    // retry once a minute for the first 20 minutes after the scheduled time.
+    if (streamPrepWindow && !streamPrepWindow.isDestroyed() && streamPrepWindow.isVisible()) return;
+    const shownAt = log.shown_at ? new Date(log.shown_at) : null;
+    const minutesAfterSchedule = (now.getTime() - scheduled.getTime()) / 60_000;
+    if (minutesAfterSchedule <= 20 && (!shownAt || now.getTime() - shownAt.getTime() >= 60_000)) {
+      showStreamReminder(now, "popup-not-visible");
+    }
   }
 }
 
@@ -676,13 +772,14 @@ function handleStreamAction(action) {
   const now = new Date();
   const occurrence = localDateKey(now);
   const scheduled = scheduledDateForToday(settings.streamReminderTime, now);
-  if (action === "snooze") {
+  if (action === "snooze" || action === "dismiss") {
     const until = new Date(now.getTime() + settings.snoozeMinutes * 60_000);
     upsertReminderLog("stream-prep", occurrence, {
       status: "snoozed",
       scheduled_for: scheduled.toISOString(),
       snoozed_until: until.toISOString(),
     });
+    appendReminderDebug(action === "dismiss" ? "popup-dismissed-to-snooze" : "popup-snoozed", { until: until.toISOString() });
   } else if (action === "complete") {
     upsertReminderLog("stream-prep", occurrence, {
       status: "completed",
@@ -705,8 +802,9 @@ function handleStreamAction(action) {
 
 function startScheduler() {
   if (schedulerTimer) clearInterval(schedulerTimer);
+  appendReminderDebug("scheduler-start", getReminderStatus());
   checkStreamReminder();
-  schedulerTimer = setInterval(checkStreamReminder, 30_000);
+  schedulerTimer = setInterval(checkStreamReminder, 15_000);
 }
 
 app.setAppUserModelId("com.egor.director");
@@ -763,7 +861,16 @@ ipcMain.handle("director:migrate-legacy-state", (event, state) => {
 
 ipcMain.handle("director:get-settings", () => publicSettings());
 ipcMain.handle("director:save-settings", (_event, next) => {
+  const previous = readSettings();
   const settings = writeSettings(next || {});
+  if (db && previous.streamReminderTime !== settings.streamReminderTime) {
+    const today = localDateKey(new Date());
+    const log = getReminderLog("stream-prep", today);
+    if (log && !["completed", "skipped"].includes(log.status)) {
+      db.prepare("DELETE FROM reminder_log WHERE kind = ? AND occurrence_date = ?").run("stream-prep", today);
+      appendReminderDebug("today-log-reset-after-time-change", { from: previous.streamReminderTime, to: settings.streamReminderTime });
+    }
+  }
   syncStreamCalendar(settings);
   broadcastDataChanged();
   startScheduler();
@@ -776,14 +883,16 @@ ipcMain.handle("director:open-data-folder", async () => {
 });
 
 ipcMain.handle("director:open-stream-prep", () => {
-  playPopupSound();
+  appendReminderDebug("manual-test-popup");
   createStreamPrepWindow();
 });
 
 ipcMain.handle("director:stream-action", (_event, action) => {
-  if (["snooze", "complete", "skip"].includes(action)) handleStreamAction(action);
+  if (["snooze", "dismiss", "complete", "skip"].includes(action)) handleStreamAction(action);
   return { ok: true };
 });
+
+ipcMain.handle("director:reminder-status", () => getReminderStatus());
 
 ipcMain.handle("director:close-current-window", (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);

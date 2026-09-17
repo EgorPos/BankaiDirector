@@ -106,6 +106,23 @@ export interface DirectorSettings {
   updateRepoName: string;
 }
 
+
+export interface ReminderStatus {
+  enabled: boolean;
+  now: string;
+  todayIsReminderDay: boolean;
+  scheduledToday: string;
+  nextAt: string | null;
+  todayLog: null | {
+    status: string;
+    scheduledFor: string | null;
+    shownAt: string | null;
+    snoozedUntil: string | null;
+    completedAt: string | null;
+  };
+  debugLogPath: string;
+}
+
 export type UpdateStatus =
   | "idle"
   | "dev"

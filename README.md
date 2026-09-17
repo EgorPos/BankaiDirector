@@ -1,3 +1,7 @@
+# Director Desktop v0.7.2
+
+This hotfix hardens Stream Prep reminders and fixes popup audio. The existing SQLite database and Miro backlog import are preserved.
+
 # Director Desktop v0.7.1
 
 This update imports the current active Reytrieve backlog captured from Egor's Miro screenshots.

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { AppState, CalendarBlock, CalendarKind, DirectorPick, DirectorSettings, Energy, ImportSuggestion, Task, TaskKind, UpdateState } from "@/lib/types";
+import { AppState, CalendarBlock, CalendarKind, DirectorPick, DirectorSettings, Energy, ImportSuggestion, ReminderStatus, Task, TaskKind, UpdateState } from "@/lib/types";
 import { initialState, loadState, saveState } from "@/lib/store";
 import { localDirectorPick } from "@/lib/scoring";
 
@@ -669,6 +669,7 @@ function SettingsView() {
   const [schemaVersion, setSchemaVersion] = useState<number | null>(null);
   const [migrationBackup, setMigrationBackup] = useState<string | null>(null);
   const [updateState, setUpdateState] = useState<UpdateState | null>(null);
+  const [reminderStatus, setReminderStatus] = useState<ReminderStatus | null>(null);
 
   useEffect(() => {
     window.directorBridge.getSettings().then(setSettings);
@@ -680,6 +681,11 @@ function SettingsView() {
     });
     window.directorBridge.getUpdateState().then(setUpdateState);
     window.directorBridge.onUpdateState(setUpdateState);
+    window.directorBridge.getReminderStatus().then(setReminderStatus);
+    const reminderTimer = window.setInterval(() => {
+      window.directorBridge.getReminderStatus().then(setReminderStatus).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(reminderTimer);
   }, []);
 
   if (!settings) return <div className="page-stack"><section className="panel">Loading settings…</section></div>;
@@ -692,6 +698,7 @@ function SettingsView() {
     setApiKey("");
     window.setTimeout(() => setSaved(false), 1800);
     window.setTimeout(() => window.directorBridge.getUpdateState().then(setUpdateState), 150);
+    window.setTimeout(() => window.directorBridge.getReminderStatus().then(setReminderStatus), 180);
   }
 
   async function clearKey() {
@@ -757,6 +764,12 @@ function SettingsView() {
   const lastChecked = updateState?.lastCheckedAt
     ? new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(updateState.lastCheckedAt))
     : "ещё не проверялось";
+  const nextReminderLabel = reminderStatus?.nextAt
+    ? new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(reminderStatus.nextAt))
+    : "—";
+  const reminderNowLabel = reminderStatus?.now
+    ? new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(new Date(reminderStatus.now))
+    : "—";
 
   return (
     <div className="page-stack">
@@ -792,7 +805,7 @@ function SettingsView() {
       </section>
 
       <section className="panel settings-card">
-        <div className="panel-head"><div><small>STREAM SCHEDULER</small><h2>Stream Prep reminder</h2></div><button onClick={() => void window.directorBridge.openStreamPrep()}>Test popup</button></div>
+        <div className="panel-head"><div><small>STREAM SCHEDULER</small><h2>Stream Prep reminder</h2></div><span className="time-chip">scheduler</span></div>
         <label className="toggle-row"><input type="checkbox" checked={settings.streamReminderEnabled} onChange={(e) => setSettings({ ...settings, streamReminderEnabled: e.target.checked })} /><span><strong>Enable reminder</strong><small>Windows notification + окно поверх остальных</small></span></label>
         <label className="toggle-row"><input type="checkbox" checked={settings.popupSoundEnabled} onChange={(e) => setSettings({ ...settings, popupSoundEnabled: e.target.checked })} /><span><strong>Popup sound</strong><small>Проиграть системный звук вместе с Stream Prep.</small></span></label>
         <div className="weekday-row">{weekdayLabels.map((label, day) => <button key={label} className={settings.streamReminderDays.includes(day) ? "day active" : "day"} onClick={() => toggleDay(day)}>{label}</button>)}</div>
@@ -804,7 +817,11 @@ function SettingsView() {
         </div>
         <label className="toggle-row"><input type="checkbox" checked={settings.startWithWindows} onChange={(e) => setSettings({ ...settings, startWithWindows: e.target.checked })} /><span><strong>Start with Windows</strong><small>Нужно, чтобы напоминание сработало, даже если ты не открывал главное окно.</small></span></label>
         <label className="toggle-row"><input type="checkbox" checked={settings.closeToTray} onChange={(e) => setSettings({ ...settings, closeToTray: e.target.checked })} /><span><strong>Close to tray</strong><small>Крестик скрывает окно, но Director остаётся жить возле часов.</small></span></label>
-        <div className="actions"><button className="primary" onClick={() => void save()}>{saved ? "✓ Saved" : "Save scheduler"}</button></div>
+        <div className="reminder-status-box">
+          <div><strong>Next reminder: {nextReminderLabel}</strong><small>Director clock: {reminderNowLabel} · today: {reminderStatus?.todayLog?.status || "not triggered"}</small></div>
+          <small className="mono-path">Log: {reminderStatus?.debugLogPath || "…"}</small>
+        </div>
+        <div className="actions"><button className="primary" onClick={() => void save()}>{saved ? "✓ Saved" : "Save scheduler"}</button><button onClick={() => void window.directorBridge.openStreamPrep()}>Test popup + sound</button></div>
       </section>
 
       <section className="panel settings-card">
@@ -828,6 +845,12 @@ function StreamPrepPopup() {
     Promise.all([loadState(), window.directorBridge.getSettings()]).then(([nextState, nextSettings]) => {
       setState(nextState);
       setSettings(nextSettings);
+      if (nextSettings.popupSoundEnabled) {
+        const audioUrl = new URL("./stream-alert.wav", window.location.href).toString();
+        const audio = new Audio(audioUrl);
+        audio.volume = 0.9;
+        void audio.play().catch((error) => console.warn("Stream alert sound failed", error));
+      }
     });
   }, []);
 
@@ -848,7 +871,7 @@ function StreamPrepPopup() {
   return (
     <div className="popup-shell">
       <section className="popup-card">
-        <div className="popup-head"><div><small>📺 STREAM PREP</small><h1>Перед стримом</h1></div><button className="icon-button" onClick={() => void window.directorBridge.closeCurrentWindow()}>×</button></div>
+        <div className="popup-head"><div><small>📺 STREAM PREP</small><h1>Перед стримом</h1></div><button className="icon-button" title="Закрыть = отложить" onClick={() => void window.directorBridge.streamAction("dismiss")}>×</button></div>
         <p className="popup-copy">{new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date())}</p>
         <div className="progress"><span style={{ width: `${routine.items.length ? (done / routine.items.length) * 100 : 0}%` }} /></div>
         <div className="popup-count">{done} / {routine.items.length}</div>
