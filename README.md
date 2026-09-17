@@ -77,3 +77,6 @@ After the GitHub bootstrap, a source tree that already has `.git`/`origin` can p
 `PUBLISH_CURRENT_VERSION.cmd`
 
 The GitHub workflow then builds the NSIS installer and publishes the update metadata used by Director.
+
+## v0.5.2 release repair
+If v0.5.1 failed in GitHub Actions at **Set release version** with `npm error Version not changed`, run `REPAIR_AND_PUBLISH_V052.cmd` from this package. It keeps the existing GitHub repository, publishes the fixed v0.5.2 source on top of its history, creates tag `v0.5.2`, and watches the GitHub Actions build.
