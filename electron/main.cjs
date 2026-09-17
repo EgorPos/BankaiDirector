@@ -23,6 +23,10 @@ const DEFAULT_SETTINGS = {
   snoozeMinutes: 15,
   startWithWindows: true,
   closeToTray: true,
+  streamCalendarEnabled: true,
+  streamStartTime: "20:00",
+  streamEndTime: "23:00",
+  popupSoundEnabled: true,
   autoUpdateEnabled: true,
   autoDownloadUpdates: true,
   updateRepoOwner: "EgorPos",
@@ -104,6 +108,10 @@ function readSettings() {
     streamReminderEnabled: raw.streamReminderEnabled !== false,
     startWithWindows: raw.startWithWindows !== false,
     closeToTray: raw.closeToTray !== false,
+    streamCalendarEnabled: raw.streamCalendarEnabled !== false,
+    streamStartTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(raw.streamStartTime || "")) ? String(raw.streamStartTime) : DEFAULT_SETTINGS.streamStartTime,
+    streamEndTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(String(raw.streamEndTime || "")) ? String(raw.streamEndTime) : DEFAULT_SETTINGS.streamEndTime,
+    popupSoundEnabled: raw.popupSoundEnabled !== false,
     autoUpdateEnabled: raw.autoUpdateEnabled !== false,
     autoDownloadUpdates: raw.autoDownloadUpdates !== false,
     updateRepoOwner: normalizeRepoPart(raw.updateRepoOwner) || DEFAULT_SETTINGS.updateRepoOwner,
@@ -122,6 +130,10 @@ function publicSettings() {
     snoozeMinutes: raw.snoozeMinutes,
     startWithWindows: raw.startWithWindows,
     closeToTray: raw.closeToTray,
+    streamCalendarEnabled: raw.streamCalendarEnabled,
+    streamStartTime: raw.streamStartTime,
+    streamEndTime: raw.streamEndTime,
+    popupSoundEnabled: raw.popupSoundEnabled,
     autoUpdateEnabled: raw.autoUpdateEnabled,
     autoDownloadUpdates: raw.autoDownloadUpdates,
     updateRepoOwner: raw.updateRepoOwner,
@@ -150,6 +162,10 @@ function writeSettings(next) {
     snoozeMinutes: next.snoozeMinutes !== undefined ? Math.min(240, Math.max(5, Number(next.snoozeMinutes) || current.snoozeMinutes)) : current.snoozeMinutes,
     startWithWindows: typeof next.startWithWindows === "boolean" ? next.startWithWindows : current.startWithWindows,
     closeToTray: typeof next.closeToTray === "boolean" ? next.closeToTray : current.closeToTray,
+    streamCalendarEnabled: typeof next.streamCalendarEnabled === "boolean" ? next.streamCalendarEnabled : current.streamCalendarEnabled,
+    streamStartTime: next.streamStartTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(String(next.streamStartTime)) ? String(next.streamStartTime) : current.streamStartTime,
+    streamEndTime: next.streamEndTime && /^([01]\d|2[0-3]):[0-5]\d$/.test(String(next.streamEndTime)) ? String(next.streamEndTime) : current.streamEndTime,
+    popupSoundEnabled: typeof next.popupSoundEnabled === "boolean" ? next.popupSoundEnabled : current.popupSoundEnabled,
     autoUpdateEnabled: typeof next.autoUpdateEnabled === "boolean" ? next.autoUpdateEnabled : current.autoUpdateEnabled,
     autoDownloadUpdates: typeof next.autoDownloadUpdates === "boolean" ? next.autoDownloadUpdates : current.autoDownloadUpdates,
     updateRepoOwner: next.updateRepoOwner !== undefined ? normalizeRepoPart(next.updateRepoOwner) : current.updateRepoOwner,
@@ -203,6 +219,7 @@ function loadAppState() {
     id: r.id,
     title: r.title,
     notes: r.notes || undefined,
+    checklist: parseJson(r.checklist_json, undefined),
     status: r.status,
     kind: r.kind,
     taskType: r.task_type || undefined,
@@ -272,13 +289,13 @@ function saveAppState(state) {
   try {
     db.exec("DELETE FROM tasks; DELETE FROM routine_items; DELETE FROM routines; DELETE FROM chat_messages; DELETE FROM calendar_blocks;");
     const insertTask = db.prepare(`INSERT INTO tasks (
-      id,title,notes,status,kind,task_type,project,area,chapter,feature,tags_json,estimate_minutes,
+      id,title,notes,checklist_json,status,kind,task_type,project,area,chapter,feature,tags_json,estimate_minutes,
       stream_friendly,visual,deep_work,blocking,created_at,completed_at,deferred_until,defer_reason,
       ai_reason,classification_reason,classification_confidence,source
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
     for (const t of state.tasks) {
       insertTask.run(
-        t.id, t.title, t.notes || null, t.status, t.kind, t.taskType || null, t.project || null, t.area || null,
+        t.id, t.title, t.notes || null, t.checklist ? JSON.stringify(t.checklist) : null, t.status, t.kind, t.taskType || null, t.project || null, t.area || null,
         t.chapter || null, t.feature || null, t.tags ? JSON.stringify(t.tags) : null, t.estimateMinutes ?? null,
         nullableBool(t.streamFriendly), nullableBool(t.visual), nullableBool(t.deepWork), nullableBool(t.blocking),
         t.createdAt, t.completedAt || null, t.deferredUntil || null, t.deferReason || null, t.aiReason || null,
@@ -555,14 +572,55 @@ function upsertReminderLog(kind, occurrenceDate, patch) {
 
 function notifyStreamPrep() {
   if (Notification.isSupported()) {
+    const settings = readSettings();
+    const hasExplicitBeep = typeof shell.beep === "function";
     const notification = new Notification({
       title: "Director — Stream Prep",
       body: "Пора подготовиться к стриму. Чеклист уже открыт.",
       icon: appIconPath(),
-      silent: false,
+      silent: settings.popupSoundEnabled ? hasExplicitBeep : true,
     });
     notification.on("click", () => createStreamPrepWindow());
     notification.show();
+  }
+}
+
+function syncStreamCalendar(settingsInput) {
+  if (!db) return;
+  const settings = settingsInput || readSettings();
+  const today = localDateKey(new Date());
+  db.prepare("DELETE FROM calendar_blocks WHERE id LIKE 'auto-stream:%' AND date >= ?").run(today);
+  if (!settings.streamCalendarEnabled) return;
+  if (settings.streamEndTime <= settings.streamStartTime) return;
+  const insert = db.prepare(`INSERT OR REPLACE INTO calendar_blocks
+    (id,title,date,start_time,end_time,kind,notes,created_at) VALUES (?,?,?,?,?,?,?,?)`);
+  const start = new Date();
+  start.setHours(12, 0, 0, 0);
+  for (let offset = 0; offset < 120; offset += 1) {
+    const d = new Date(start);
+    d.setDate(start.getDate() + offset);
+    if (!settings.streamReminderDays.includes(d.getDay())) continue;
+    const date = localDateKey(d);
+    insert.run(
+      `auto-stream:${date}`,
+      "Stream",
+      date,
+      settings.streamStartTime,
+      settings.streamEndTime,
+      "stream",
+      "Автоматически из Stream Scheduler",
+      new Date().toISOString()
+    );
+  }
+}
+
+function playPopupSound() {
+  const settings = readSettings();
+  if (!settings.popupSoundEnabled) return;
+  try {
+    if (typeof shell.beep === "function") shell.beep();
+  } catch (error) {
+    console.warn("Could not play popup sound:", error);
   }
 }
 
@@ -575,6 +633,7 @@ function showStreamReminder(now = new Date()) {
     shown_at: now.toISOString(),
     snoozed_until: null,
   });
+  playPopupSound();
   notifyStreamPrep();
   createStreamPrepWindow();
 }
@@ -654,6 +713,7 @@ app.setAppUserModelId("com.egor.director");
 app.whenReady().then(() => {
   initDatabase();
   const settings = readSettings();
+  syncStreamCalendar(settings);
   applyLoginItemSetting(settings.startWithWindows);
   createMainWindow();
   createTray();
@@ -703,6 +763,8 @@ ipcMain.handle("director:migrate-legacy-state", (event, state) => {
 ipcMain.handle("director:get-settings", () => publicSettings());
 ipcMain.handle("director:save-settings", (_event, next) => {
   const settings = writeSettings(next || {});
+  syncStreamCalendar(settings);
+  broadcastDataChanged();
   startScheduler();
   updateManager?.refreshConfiguration();
   return settings;
@@ -713,6 +775,7 @@ ipcMain.handle("director:open-data-folder", async () => {
 });
 
 ipcMain.handle("director:open-stream-prep", () => {
+  playPopupSound();
   createStreamPrepWindow();
 });
 

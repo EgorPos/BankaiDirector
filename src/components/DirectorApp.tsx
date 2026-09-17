@@ -286,7 +286,33 @@ function CalendarView({ state, setState }: { state: AppState; setState: React.Di
   const [endTime, setEndTime] = useState("20:00");
   const [kind, setKind] = useState<CalendarKind>("reytrieve");
   const [notes, setNotes] = useState("");
+  const selectedDate = parseDateKey(date);
+  const monthStart = new Date(selectedDate.getFullYear(), selectedDate.getMonth(), 1);
+  const monthLabel = new Intl.DateTimeFormat("ru-RU", { month: "long", year: "numeric" }).format(monthStart);
   const blocks = state.calendarBlocks.filter((b) => b.date === date).sort((a, b) => a.startTime.localeCompare(b.startTime));
+
+  const calendarDays = useMemo(() => {
+    const first = new Date(monthStart.getFullYear(), monthStart.getMonth(), 1);
+    const gridStart = new Date(first);
+    gridStart.setDate(first.getDate() - first.getDay());
+    return Array.from({ length: 42 }, (_, index) => {
+      const d = new Date(gridStart);
+      d.setDate(gridStart.getDate() + index);
+      const key = localDateKey(d);
+      return {
+        key,
+        day: d.getDate(),
+        inMonth: d.getMonth() === monthStart.getMonth(),
+        today: key === localDateKey(),
+        blocks: state.calendarBlocks.filter((b) => b.date === key),
+      };
+    });
+  }, [monthStart.getFullYear(), monthStart.getMonth(), state.calendarBlocks]);
+
+  function shiftMonth(delta: number) {
+    const d = new Date(selectedDate.getFullYear(), selectedDate.getMonth() + delta, 1);
+    setDate(localDateKey(d));
+  }
 
   function addBlock() {
     const clean = title.trim();
@@ -300,10 +326,46 @@ function CalendarView({ state, setState }: { state: AppState; setState: React.Di
     setState((s) => ({ ...s, calendarBlocks: s.calendarBlocks.filter((b) => b.id !== id) }));
   }
 
-  const dayLabel = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" }).format(parseDateKey(date));
-  return <div className="page-stack calendar-page"><section className="panel calendar-toolbar"><div><small>DAY PLAN</small><h2>{dayLabel}</h2></div><div className="actions"><button onClick={() => setDate(shiftDateKey(date, -1))}>←</button><button onClick={() => setDate(localDateKey())}>Today</button><button onClick={() => setDate(shiftDateKey(date, 1))}>→</button></div></section><section className="calendar-grid"><div className="panel"><div className="panel-head"><div><small>SCHEDULE</small><h3>Блоки дня</h3></div><span className="source-pill">{blocks.length}</span></div>{blocks.length === 0 ? <p className="settings-copy">Пусто. Добавь работу, стрим, личные дела или окно на Reytrieve — AI будет учитывать это при выборе задач.</p> : <div className="calendar-block-list">{blocks.map((b) => <div className="calendar-block" key={b.id}><span className={`calendar-dot kind-${b.kind}`} /><div className="calendar-time"><strong>{b.startTime}</strong><small>{b.endTime}</small></div><div className="calendar-block-copy"><strong>{b.title}</strong><div className="task-meta"><span>{b.kind}</span>{b.notes && <span>{b.notes}</span>}</div></div><button className="danger-text" onClick={() => removeBlock(b.id)}>×</button></div>)}</div>}</div><div className="panel calendar-add"><div className="panel-head"><div><small>ADD BLOCK</small><h3>Забить время</h3></div></div><label><span>Что происходит</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Работа / стрим / Reytrieve…" /></label><div className="two-col"><label><span>Начало</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label><label><span>Конец</span><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label></div><label><span>Тип</span><select value={kind} onChange={(e) => setKind(e.target.value as CalendarKind)}><option value="work">Work</option><option value="reytrieve">Reytrieve</option><option value="stream">Stream</option><option value="personal">Personal</option><option value="admin">Admin</option><option value="other">Other</option></select></label><label><span>Заметка</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="необязательно" /></label>{endTime <= startTime && <p className="duplicate-warning">Конец должен быть позже начала.</p>}<button className="primary" disabled={!title.trim() || endTime <= startTime} onClick={addBlock}>Add to calendar</button></div></section></div>;
-}
+  const dayLabel = new Intl.DateTimeFormat("ru-RU", { weekday: "long", day: "numeric", month: "long" }).format(selectedDate);
+  return (
+    <div className="page-stack calendar-page">
+      <section className="panel month-calendar">
+        <div className="calendar-toolbar">
+          <div><small>MONTH</small><h2>{monthLabel}</h2></div>
+          <div className="actions"><button onClick={() => shiftMonth(-1)}>←</button><button onClick={() => setDate(localDateKey())}>Today</button><input className="calendar-date-jump" type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} /><button onClick={() => shiftMonth(1)}>→</button></div>
+        </div>
+        <div className="month-weekdays">{weekdayLabels.map((d) => <span key={d}>{d}</span>)}</div>
+        <div className="month-grid">
+          {calendarDays.map((cell) => (
+            <button key={cell.key} className={`month-day ${cell.inMonth ? "" : "outside"} ${cell.key === date ? "selected" : ""} ${cell.today ? "today" : ""}`} onClick={() => setDate(cell.key)}>
+              <span className="month-day-number">{cell.day}</span>
+              <span className="month-day-events">
+                {cell.blocks.slice(0, 3).map((block) => <i key={block.id} className={`month-event-dot kind-${block.kind}`} title={`${block.startTime} ${block.title}`} />)}
+                {cell.blocks.length > 3 && <small>+{cell.blocks.length - 3}</small>}
+              </span>
+            </button>
+          ))}
+        </div>
+      </section>
 
+      <section className="calendar-grid">
+        <div className="panel">
+          <div className="panel-head"><div><small>DAY PLAN</small><h3>{dayLabel}</h3></div><span className="source-pill">{blocks.length}</span></div>
+          {blocks.length === 0 ? <p className="settings-copy">Пусто. Выбери другой день в календаре или добавь блок справа.</p> : <div className="calendar-block-list">{blocks.map((b) => <div className="calendar-block" key={b.id}><span className={`calendar-dot kind-${b.kind}`} /><div className="calendar-time"><strong>{b.startTime}</strong><small>{b.endTime}</small></div><div className="calendar-block-copy"><strong>{b.title}</strong><div className="task-meta"><span>{b.kind}</span>{b.id.startsWith("auto-stream:") && <span>recurring</span>}{b.notes && <span>{b.notes}</span>}</div></div>{!b.id.startsWith("auto-stream:") ? <button className="danger-text" onClick={() => removeBlock(b.id)}>×</button> : <span />}</div>)}</div>}
+        </div>
+        <div className="panel calendar-add">
+          <div className="panel-head"><div><small>ADD BLOCK</small><h3>Забить время</h3></div></div>
+          <label><span>Что происходит</span><input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Работа / стрим / Reytrieve…" /></label>
+          <div className="two-col"><label><span>Начало</span><input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} /></label><label><span>Конец</span><input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} /></label></div>
+          <label><span>Тип</span><select value={kind} onChange={(e) => setKind(e.target.value as CalendarKind)}><option value="work">Work</option><option value="reytrieve">Reytrieve</option><option value="stream">Stream</option><option value="personal">Personal</option><option value="admin">Admin</option><option value="other">Other</option></select></label>
+          <label><span>Заметка</span><textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="необязательно" /></label>
+          {endTime <= startTime && <p className="duplicate-warning">Конец должен быть позже начала.</p>}
+          <button className="primary" disabled={!title.trim() || endTime <= startTime} onClick={addBlock}>Add to calendar</button>
+        </div>
+      </section>
+    </div>
+  );
+}
 function TasksView({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
   const [title, setTitle] = useState("");
   const [filter, setFilter] = useState<"open" | "done" | "all">("open");
@@ -342,10 +404,53 @@ function TasksView({ state, setState }: { state: AppState; setState: React.Dispa
 }
 
 function TaskRow({ task, update, remove }: { task: Task; update: (p: Partial<Task>) => void; remove: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const [newItem, setNewItem] = useState("");
   const deferredText = task.status === "deferred" && task.deferredUntil ? `до ${new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(task.deferredUntil))}` : undefined;
-  return <div className={task.status === "done" ? "task-row done" : "task-row"}><button className={task.status === "done" ? "task-check checked" : "task-check"} onClick={() => update(task.status === "done" ? { status: "todo", completedAt: undefined } : { status: "done", completedAt: new Date().toISOString() })}>{task.status === "done" ? "✓" : ""}</button><div className="task-main"><strong>{task.title}</strong><div className="task-meta">{task.project && <span>{task.project}</span>}{task.area && <span>{task.area}</span>}{task.feature && <span>{task.feature}</span>}{task.taskType && <span>{task.taskType}</span>}{task.estimateMinutes && <span>~{formatMinutes(task.estimateMinutes)}</span>}{task.blocking && <span className="meta-hot">blocker</span>}{task.streamFriendly && <span>stream</span>}{deferredText && <span>deferred {deferredText}</span>}</div>{task.classificationReason && <p className="task-reason">{task.classificationReason}</p>}</div><select value={task.status} onChange={(e) => update({ status: e.target.value as Task["status"] })}><option value="todo">Todo</option><option value="active">Active</option><option value="deferred">Deferred</option><option value="done">Done</option></select><button className="danger-text" onClick={remove}>×</button></div>;
-}
+  const checklist = task.checklist || [];
+  const doneCount = checklist.filter((item) => item.checked).length;
 
+  function addChecklistItem() {
+    const text = newItem.trim();
+    if (!text) return;
+    update({ checklist: [...checklist, { id: uid(), text, checked: false }] });
+    setNewItem("");
+  }
+
+  function patchChecklistItem(id: string, patch: { text?: string; checked?: boolean }) {
+    update({ checklist: checklist.map((item) => item.id === id ? { ...item, ...patch } : item) });
+  }
+
+  function removeChecklistItem(id: string) {
+    update({ checklist: checklist.filter((item) => item.id !== id) });
+  }
+
+  return (
+    <div className={task.status === "done" ? "task-row-wrap done" : "task-row-wrap"}>
+      <div className="task-row">
+        <button className={task.status === "done" ? "task-check checked" : "task-check"} onClick={() => update(task.status === "done" ? { status: "todo", completedAt: undefined } : { status: "done", completedAt: new Date().toISOString() })}>{task.status === "done" ? "✓" : ""}</button>
+        <div className="task-main" onClick={() => setExpanded((v) => !v)}>
+          <strong>{task.title}</strong>
+          <div className="task-meta">{task.project && <span>{task.project}</span>}{task.area && <span>{task.area}</span>}{task.feature && <span>{task.feature}</span>}{task.taskType && <span>{task.taskType}</span>}{task.estimateMinutes && <span>~{formatMinutes(task.estimateMinutes)}</span>}{task.blocking && <span className="meta-hot">blocker</span>}{task.streamFriendly && <span>stream</span>}{checklist.length > 0 && <span>☑ {doneCount}/{checklist.length}</span>}{deferredText && <span>deferred {deferredText}</span>}</div>
+          {task.notes && <p className="task-note-preview">{task.notes}</p>}
+        </div>
+        <button className="task-details-button" onClick={() => setExpanded((v) => !v)}>{expanded ? "Close" : "Details"}</button>
+        <select value={task.status} onChange={(e) => update({ status: e.target.value as Task["status"] })}><option value="todo">Todo</option><option value="active">Active</option><option value="deferred">Deferred</option><option value="done">Done</option></select>
+        <button className="danger-text" onClick={remove}>×</button>
+      </div>
+      {expanded && <div className="task-details">
+        <label><span>Описание / заметки</span><textarea value={task.notes || ""} onChange={(e) => update({ notes: e.target.value })} placeholder="Что именно надо сделать, ссылки, детали, мысли…" /></label>
+        <div className="task-checklist-head"><div><small>CHECKLIST</small><strong>{doneCount}/{checklist.length}</strong></div></div>
+        <div className="task-subtasks">
+          {checklist.map((item) => <div className="task-subtask" key={item.id}><button className={item.checked ? "task-check checked" : "task-check"} onClick={() => patchChecklistItem(item.id, { checked: !item.checked })}>{item.checked ? "✓" : ""}</button><input value={item.text} onChange={(e) => patchChecklistItem(item.id, { text: e.target.value })} /><button className="danger-text" onClick={() => removeChecklistItem(item.id)}>×</button></div>)}
+          {!checklist.length && <p className="settings-copy">Можно разбить задачу на маленькие шаги. Это не отдельные задачи Director — это чеклист внутри неё.</p>}
+        </div>
+        <div className="task-subtask-add"><input value={newItem} onChange={(e) => setNewItem(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addChecklistItem()} placeholder="Добавить пункт чеклиста…" /><button onClick={addChecklistItem}>+ Add</button></div>
+        {task.classificationReason && <p className="task-reason"><b>Director:</b> {task.classificationReason}</p>}
+      </div>}
+    </div>
+  );
+}
 function InboxView({ state, setState }: { state: AppState; setState: React.Dispatch<React.SetStateAction<AppState>> }) {
   const [raw, setRaw] = useState("");
   const [sourceName, setSourceName] = useState("Paste / raw backlog");
@@ -597,8 +702,14 @@ function SettingsView() {
       <section className="panel settings-card">
         <div className="panel-head"><div><small>STREAM SCHEDULER</small><h2>Stream Prep reminder</h2></div><button onClick={() => void window.directorBridge.openStreamPrep()}>Test popup</button></div>
         <label className="toggle-row"><input type="checkbox" checked={settings.streamReminderEnabled} onChange={(e) => setSettings({ ...settings, streamReminderEnabled: e.target.checked })} /><span><strong>Enable reminder</strong><small>Windows notification + окно поверх остальных</small></span></label>
+        <label className="toggle-row"><input type="checkbox" checked={settings.popupSoundEnabled} onChange={(e) => setSettings({ ...settings, popupSoundEnabled: e.target.checked })} /><span><strong>Popup sound</strong><small>Проиграть системный звук вместе с Stream Prep.</small></span></label>
         <div className="weekday-row">{weekdayLabels.map((label, day) => <button key={label} className={settings.streamReminderDays.includes(day) ? "day active" : "day"} onClick={() => toggleDay(day)}>{label}</button>)}</div>
-        <div className="settings-grid"><label className="settings-field"><span>Time</span><input type="time" value={settings.streamReminderTime} onChange={(e) => setSettings({ ...settings, streamReminderTime: e.target.value })} /></label><label className="settings-field"><span>Snooze, minutes</span><input type="number" min={5} max={240} value={settings.snoozeMinutes} onChange={(e) => setSettings({ ...settings, snoozeMinutes: Number(e.target.value) || 15 })} /></label></div>
+        <div className="settings-grid"><label className="settings-field"><span>Prep popup</span><input type="time" value={settings.streamReminderTime} onChange={(e) => setSettings({ ...settings, streamReminderTime: e.target.value })} /></label><label className="settings-field"><span>Snooze, minutes</span><input type="number" min={5} max={240} value={settings.snoozeMinutes} onChange={(e) => setSettings({ ...settings, snoozeMinutes: Number(e.target.value) || 15 })} /></label></div>
+        <div className="stream-calendar-settings">
+          <label className="toggle-row"><input type="checkbox" checked={settings.streamCalendarEnabled} onChange={(e) => setSettings({ ...settings, streamCalendarEnabled: e.target.checked })} /><span><strong>Add streams to Calendar automatically</strong><small>Для выбранных дней Director создаёт повторяющиеся Stream-блоки на ближайшие 120 дней.</small></span></label>
+          <div className="settings-grid"><label className="settings-field"><span>Stream starts</span><input type="time" value={settings.streamStartTime} onChange={(e) => setSettings({ ...settings, streamStartTime: e.target.value })} /></label><label className="settings-field"><span>Stream ends</span><input type="time" value={settings.streamEndTime} onChange={(e) => setSettings({ ...settings, streamEndTime: e.target.value })} /></label></div>
+          {settings.streamEndTime <= settings.streamStartTime && <p className="duplicate-warning">Конец стрима должен быть позже начала.</p>}
+        </div>
         <label className="toggle-row"><input type="checkbox" checked={settings.startWithWindows} onChange={(e) => setSettings({ ...settings, startWithWindows: e.target.checked })} /><span><strong>Start with Windows</strong><small>Нужно, чтобы напоминание сработало, даже если ты не открывал главное окно.</small></span></label>
         <label className="toggle-row"><input type="checkbox" checked={settings.closeToTray} onChange={(e) => setSettings({ ...settings, closeToTray: e.target.checked })} /><span><strong>Close to tray</strong><small>Крестик скрывает окно, но Director остаётся жить возле часов.</small></span></label>
         <div className="actions"><button className="primary" onClick={() => void save()}>{saved ? "✓ Saved" : "Save scheduler"}</button></div>

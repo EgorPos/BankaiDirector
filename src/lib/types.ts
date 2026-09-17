@@ -3,10 +3,17 @@ export type TaskStatus = "inbox" | "todo" | "active" | "done" | "deferred";
 export type TaskKind = "dev" | "stream" | "personal" | "work" | "admin";
 export type TaskType = "bug" | "feature" | "polish" | "art" | "ui" | "vfx" | "animation" | "design" | "admin" | "personal" | "work" | "other";
 
+export interface TaskChecklistItem {
+  id: string;
+  text: string;
+  checked: boolean;
+}
+
 export interface Task {
   id: string;
   title: string;
   notes?: string;
+  checklist?: TaskChecklistItem[];
   status: TaskStatus;
   kind: TaskKind;
   taskType?: TaskType;
@@ -88,6 +95,10 @@ export interface DirectorSettings {
   snoozeMinutes: number;
   startWithWindows: boolean;
   closeToTray: boolean;
+  streamCalendarEnabled: boolean;
+  streamStartTime: string;
+  streamEndTime: string;
+  popupSoundEnabled: boolean;
   autoUpdateEnabled: boolean;
   autoDownloadUpdates: boolean;
   updateRepoOwner: string;

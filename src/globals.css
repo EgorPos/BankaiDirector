@@ -199,3 +199,54 @@ input, textarea { width: 100%; background: #0f0c15; border: 1px solid var(--line
   .calendar-block { grid-template-columns: 10px 58px 1fr 28px; }
   .two-col { grid-template-columns: 1fr; }
 }
+
+/* v0.6 — recurring streams, task details/checklists, real month calendar */
+.task-row-wrap { border-bottom: 1px solid var(--line); background: transparent; }
+.task-row-wrap:last-child { border-bottom: 0; }
+.task-row-wrap .task-row { border-bottom: 0; }
+.task-row-wrap.done .task-main { opacity: .45; text-decoration: line-through; }
+.task-main { cursor: pointer; min-width: 0; }
+.task-note-preview { margin: 7px 0 0; color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 680px; }
+.task-details-button { padding: 8px 10px; font-size: 11px; }
+.task-details { margin: 0 16px 16px 52px; padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: #0d0b12; display: grid; gap: 14px; }
+.task-details label { display: grid; gap: 7px; }
+.task-details label > span { color: var(--muted); font-size: 12px; }
+.task-details textarea { min-height: 104px; resize: vertical; }
+.task-checklist-head { display: flex; align-items: center; justify-content: space-between; }
+.task-checklist-head > div { display: flex; gap: 9px; align-items: baseline; }
+.task-checklist-head small { color: var(--muted); font-weight: 800; }
+.task-subtasks { display: grid; gap: 7px; }
+.task-subtask { display: grid; grid-template-columns: 26px 1fr 28px; gap: 8px; align-items: center; }
+.task-subtask input { width: 100%; background: #100d16; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; color: var(--text); }
+.task-subtask-add { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+.task-subtask-add input { width: 100%; }
+
+.month-calendar { padding: 18px; }
+.calendar-date-jump { background: #0f0c15; border: 1px solid var(--line); border-radius: 10px; color: var(--text); padding: 8px 10px; color-scheme: dark; }
+.month-weekdays { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 16px; color: var(--muted); font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+.month-weekdays span { padding: 0 8px 5px; }
+.month-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+.month-day { min-height: 74px; border: 1px solid var(--line); border-radius: 11px; background: #100d16; padding: 8px; display: flex; flex-direction: column; align-items: stretch; justify-content: space-between; color: var(--text); text-align: left; }
+.month-day:hover { transform: none; border-color: #5b4678; background: #15101d; }
+.month-day.outside { opacity: .34; }
+.month-day.selected { border-color: var(--purple-2); box-shadow: inset 0 0 0 1px var(--purple-2); background: #181023; }
+.month-day.today .month-day-number { color: var(--purple-2); }
+.month-day-number { font-size: 12px; font-weight: 800; }
+.month-day-events { display: flex; gap: 4px; align-items: center; min-height: 12px; }
+.month-event-dot { width: 7px; height: 7px; border-radius: 999px; background: #88749d; }
+.month-event-dot.kind-work { background: #7ba4ff; }
+.month-event-dot.kind-personal { background: #df9f68; }
+.month-event-dot.kind-reytrieve { background: #a67bff; }
+.month-event-dot.kind-stream { background: #ff6ca8; box-shadow: 0 0 8px #ff6ca866; }
+.month-event-dot.kind-admin { background: #77d2c2; }
+.month-day-events small { font-size: 9px; color: var(--muted); }
+.stream-calendar-settings { border: 1px solid var(--line); border-radius: 14px; padding: 12px; display: grid; gap: 12px; background: #100d16; }
+
+@media (max-width: 760px) {
+  .month-day { min-height: 54px; padding: 6px; }
+  .month-weekdays { gap: 3px; }
+  .month-grid { gap: 3px; }
+  .calendar-date-jump { max-width: 145px; }
+  .task-details { margin-left: 12px; margin-right: 12px; }
+  .task-details-button { display: none; }
+}

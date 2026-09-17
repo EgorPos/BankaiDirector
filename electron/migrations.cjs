@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 
-const CURRENT_SCHEMA_VERSION = 3;
+const CURRENT_SCHEMA_VERSION = 4;
 
 function tableExists(db, name) {
   const row = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name = ?").get(name);
@@ -128,6 +128,11 @@ const migrations = {
         created_at TEXT NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_calendar_blocks_date_time ON calendar_blocks(date, start_time);
+    `);
+  },
+  4(db) {
+    db.exec(`
+      ALTER TABLE tasks ADD COLUMN checklist_json TEXT;
     `);
   },
 };
