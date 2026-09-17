@@ -1,0 +1,25 @@
+appId: com.egor.director
+productName: Director
+asar: true
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+directories:
+  output: release
+win:
+  icon: build/icon.ico
+  electronUpdaterCompatibility: ">=2.16"
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: Director
+publish:
+  - provider: github
+    releaseType: release
