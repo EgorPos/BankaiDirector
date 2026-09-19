@@ -232,6 +232,7 @@ function TodayView({ state, completedToday, pick, thinking, pickNotice, mode, as
         ) : (
           <div className="pick-content">
             <small>NEXT TASK</small><h2>{pick.taskTitle}</h2>
+            {selectedTask && <TaskContextMeta task={selectedTask} />}
             {pick.estimatedMinutes && <div className="time-chip">~ {formatMinutes(pick.estimatedMinutes)}</div>}
             <p className="why"><b>Почему:</b> {pick.why}</p>{pick.caution && <p className="caution">{pick.caution}</p>}
             {selectedTask && <InlineTaskChecklist task={selectedTask} updateTask={updateTask} />}
@@ -255,7 +256,7 @@ function TodayView({ state, completedToday, pick, thinking, pickNotice, mode, as
 
       {active && <section className="panel active-task-card">
         <div className="active-task">
-          <div><small>NOW WORKING ON</small><h3>{active.title}</h3></div>
+          <div className="active-task-copy"><small>NOW WORKING ON</small><h3>{active.title}</h3><TaskContextMeta task={active} compact /></div>
           <div className="actions"><button className="primary" onClick={() => updateTask(active.id, { status: "done", completedAt: new Date().toISOString(), archivedAt: undefined })}>✓ Done</button><button onClick={() => updateTask(active.id, { status: "todo", completedAt: undefined })}>Stop</button></div>
         </div>
         <InlineTaskChecklist task={active} updateTask={updateTask} compact />
@@ -264,6 +265,31 @@ function TodayView({ state, completedToday, pick, thinking, pickNotice, mode, as
       <TodaySchedule blocks={state.calendarBlocks} onOpenCalendar={() => setView("calendar")} />
 
       <section className="panel"><div className="panel-head"><div><small>ROUTINE</small><h3>Stream Prep</h3></div><div className="actions"><button className="text-button" onClick={() => window.directorBridge.openStreamPrep()}>Open popup</button><button className="text-button" onClick={() => setView("routines")}>Edit →</button></div></div>{state.routines.find((r) => r.id === "stream-prep")?.items.slice(0, 5).map((item) => <div key={item.id} className="mini-check"><span className={item.checked ? "check checked" : "check"}>{item.checked ? "✓" : ""}</span><span>{item.text}</span></div>)}</section>
+    </div>
+  );
+}
+
+function TaskContextMeta({ task, compact = false }: { task: Task; compact?: boolean }) {
+  const location = [task.chapter, task.area, task.feature].filter(Boolean) as string[];
+  const tags = (task.tags || [])
+    .filter((tag) => !["miro", "stream", "off-stream", "offstream", task.taskType].includes(tag))
+    .slice(0, 8);
+
+  return (
+    <div className={compact ? "task-context compact" : "task-context"}>
+      <div className="task-context-line">
+        <span className="task-context-label">LOCATION</span>
+        <strong>{location.length ? `📍 ${location.join(" › ")}` : task.project ? `📍 ${task.project}` : "📍 Unassigned"}</strong>
+      </div>
+      <div className="task-context-tags">
+        {task.project && <span className="context-chip project-chip">{task.project}</span>}
+        {task.taskType && <span className="context-chip">{task.taskType}</span>}
+        {task.streamFriendly === true && <span className="context-chip meta-stream">📺 stream</span>}
+        {task.streamFriendly === false && <span className="context-chip meta-offstream">🧠 off-stream</span>}
+        {task.blocking && <span className="context-chip meta-hot">blocker</span>}
+        {tags.map((tag) => <span className="context-chip" key={tag}>#{tag}</span>)}
+        {!tags.length && !task.taskType && task.streamFriendly === undefined && !task.blocking && <span className="context-chip context-empty">no tags yet</span>}
+      </div>
     </div>
   );
 }

@@ -294,3 +294,19 @@ input, textarea { width: 100%; background: #0f0c15; border: 1px solid var(--line
 @media (max-width: 760px) {
   .backlog-analysis-stats { display: grid; grid-template-columns: 1fr; }
 }
+
+/* v0.8.1 — keep task context visible when Director picks/starts a task */
+.task-context { display: grid; gap: 7px; margin: 2px 0 14px; }
+.task-context.compact { margin: 7px 0 0; gap: 5px; }
+.task-context-line { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; color: #d9d2e5; }
+.task-context-line strong { font-size: 13px; font-weight: 650; color: #eee8f7; }
+.task-context-label { font-size: 9px; letter-spacing: .12em; color: var(--muted); font-weight: 700; }
+.task-context-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.context-chip { color: var(--muted); font-size: 11px; background: #211a2d; border: 1px solid #302540; border-radius: 999px; padding: 4px 7px; line-height: 1; }
+.context-chip.project-chip { color: #cfc2e8; }
+.context-chip.meta-stream { color: #ffb7d6; background: #51213a55; border-color: #74334e66; }
+.context-chip.meta-offstream { color: #b9c7ff; background: #25315a55; border-color: #344a7a66; }
+.context-chip.meta-hot { color: #ffb6c0; background: #5b273233; border-color: #73303e55; }
+.context-chip.context-empty { opacity: .68; font-style: italic; }
+.active-task-copy { min-width: 0; flex: 1; }
+.pick-content .task-context + .time-chip { margin-top: 0; }

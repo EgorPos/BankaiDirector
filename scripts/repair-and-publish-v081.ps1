@@ -16,7 +16,7 @@ function Find-Exe([string]$Name, [string[]]$Fallbacks) {
   return $null
 }
 
-Banner "Director v0.8.0 - Planner reroll + AI backlog pass"
+Banner "Director v0.8.1 - Task context on Director cards"
 $git = Find-Exe 'git.exe' @('C:\Program Files\Git\cmd\git.exe','C:\Program Files\Git\bin\git.exe')
 $gh = Find-Exe 'gh.exe' @('C:\Program Files\GitHub CLI\gh.exe')
 if (-not $git) { throw 'Git was not found.' }
@@ -40,7 +40,7 @@ if ($LASTEXITCODE -ne 0) { throw "GitHub repository $fullRepo was not found." }
 
 $package = Get-Content (Join-Path $SourceRoot 'package.json') -Raw | ConvertFrom-Json
 $version = [string]$package.version
-if ($version -ne '0.8.0') { throw "This package must be v0.8.0, found $version." }
+if ($version -ne '0.8.1') { throw "This package must be v0.8.1, found $version." }
 $tag = "v$version"
 
 $tempRoot = Join-Path $env:TEMP ("DirectorReleaseRepair-" + [Guid]::NewGuid().ToString('N'))
@@ -67,8 +67,8 @@ try {
     & $git add -A
     & $git diff --cached --quiet
     if ($LASTEXITCODE -ne 0) {
-      & $git commit -m "Director v$version - Planner reroll + AI backlog pass"
-      if ($LASTEXITCODE -ne 0) { throw 'Could not commit v0.8.0.' }
+      & $git commit -m "Director v$version - Task context on Director cards"
+      if ($LASTEXITCODE -ne 0) { throw 'Could not commit v0.8.1.' }
     }
     & $git push origin main
     if ($LASTEXITCODE -ne 0) { throw 'Could not push main.' }
@@ -107,12 +107,12 @@ try {
     & $gh run watch $runId --repo $fullRepo --exit-status
     if ($LASTEXITCODE -ne 0) {
       & $gh run view $runId --repo $fullRepo --web
-      throw 'v0.8.0 release build failed.'
+      throw 'v0.8.1 release build failed.'
     }
-    Banner "Director v0.8.0 published"
+    Banner "Director v0.8.1 published"
     Start-Process "https://github.com/$fullRepo/releases/tag/$tag"
-    Write-Host "The release must contain: Director-Setup-0.8.0.exe, its .blockmap, and latest.yml." -ForegroundColor Green
-    Write-Host "Installed Director should now detect v0.8.0 through Check now / automatic updater. No manual install should be needed." -ForegroundColor Yellow
+    Write-Host "The release must contain: Director-Setup-0.8.1.exe, its .blockmap, and latest.yml." -ForegroundColor Green
+    Write-Host "Installed Director should now detect v0.8.1 through Check now / automatic updater. No manual install should be needed." -ForegroundColor Yellow
   }
 }
 finally {

@@ -1,18 +1,18 @@
-# Director Desktop v0.8.0
+# Director Desktop v0.8.1
 
 ## Что нового
 
-- Director Queue теперь всегда показывает локальный выбор сразу, даже если AI/API тормозит или недоступен.
-- `Another one` действительно исключает предыдущие варианты и рероллит задачу, вместо повторного выбора того же top-score таска.
-- Focus / Stream / 30 min / Visual используют более строгие правила выбора.
-- В Tasks появился **AI Backlog Pass**: Director проходит по активному пулу, решает `stream` / `off-stream`, выставляет теги, тип задачи, visual/deep-work, blocker и примерное время.
-- Добавлены фильтры `Stream`, `Off-stream`, `Untagged` и показ AI-тегов прямо в списке задач.
-- Миро-задачи и вся текущая SQLite база сохраняются без повторного импорта или сброса.
+- В карточке `NEXT TASK` теперь всегда видна локация задачи: `Chapter → Area / Act → Feature`.
+- Там же видны Project, task type, `stream/off-stream`, blocker и обычные теги.
+- После `Start` этот же контекст остаётся в блоке `NOW WORKING ON`.
+- Если задача ещё не размечена, Director явно показывает `no tags yet`.
+- Все функции v0.8.0 сохранены: локальный planner, настоящий `Another one`, Stream/Focus/30 min/Visual, AI Backlog Pass и Miro backlog.
+- SQLite schema остаётся 6: база и задачи не переимпортируются и не сбрасываются.
 
 ## Публикация
 
 Двойной клик по:
 
-`REPAIR_AND_PUBLISH_V080.cmd`
+`REPAIR_AND_PUBLISH_V081.cmd`
 
 После зелёного GitHub Actions открой установленный Director → Settings → `Check now` → `Restart & Update`.
