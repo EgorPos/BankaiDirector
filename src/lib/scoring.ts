@@ -40,44 +40,59 @@ function inferredStreamAffinity(task: Task) {
   return 0;
 }
 
-function scoreTask(task: Task, state: AppState, mode: "work" | "stream" | "short" | "visual" = "work") {
-  let score = 0;
-  if (task.status === "active") score += 28;
-  if (task.blocking) score += 24;
-  if (task.taskType === "bug") score += 10;
-  if (task.kind === "dev") score += 7;
-  if (task.project === "Reytrieve Odyssey") score += 5;
-  if (task.deepWork) score += state.energy === "full" ? 14 : state.energy === "normal" ? 6 : -18;
-  if (!task.deepWork && (state.energy === "low" || state.energy === "dead")) score += 12;
+function candidateTasks(state: AppState, excludeTaskIds: string[] = []) {
+  const excluded = new Set(excludeTaskIds);
+  return state.tasks.filter((task) =>
+    !["done", "archived", "inbox"].includes(task.status) &&
+    !isDeferredForFuture(task) &&
+    !excluded.has(task.id)
+  );
+}
+
+function poolForMode(tasks: Task[], mode: "work" | "stream" | "short" | "visual") {
+  if (!tasks.length) return tasks;
 
   if (mode === "stream") {
-    if (task.streamFriendly === true) score += 48;
-    else if (task.streamFriendly === false) score -= 48;
-    else {
-      const affinity = inferredStreamAffinity(task);
-      score += affinity > 0 ? 20 : affinity < 0 ? -20 : -6;
-    }
-    if (task.visual || (task.visual === undefined && inferredStreamAffinity(task) > 0)) score += 10;
-    if (task.deepWork) score -= 12;
+    const explicit = tasks.filter((task) => task.streamFriendly === true);
+    if (explicit.length) return explicit;
+    const inferred = tasks.filter((task) => inferredStreamAffinity(task) > 0);
+    return inferred.length ? inferred : tasks;
   }
-  if (mode === "work") {
-    // Preserve obvious showy tasks for streams when a useful off-stream job exists.
-    if (task.streamFriendly === false) score += 10;
-    if (task.streamFriendly === true && task.visual) score -= 3;
-  }
-  if (mode === "visual") {
-    if (task.visual === true) score += 32;
-    else if (task.visual === false) score -= 12;
-    else score += inferredStreamAffinity(task) > 0 ? 20 : -8;
-  }
-  if (mode === "short") score += (task.estimateMinutes ?? 60) <= 45 ? 32 : -22;
-  if ((task.estimateMinutes ?? 60) <= 120) score += 4;
 
-  const available = availableMinutesUntilNextBlock(state);
-  if (available > 0 && (task.estimateMinutes ?? 60) > available + 10) score -= 26;
-  if (available > 0 && (task.estimateMinutes ?? 60) <= available) score += 6;
-  if (task.status === "deferred") score -= 6;
-  return score;
+  if (mode === "visual") {
+    const explicit = tasks.filter((task) => task.visual === true);
+    if (explicit.length) return explicit;
+    const inferred = tasks.filter((task) => inferredStreamAffinity(task) > 0);
+    return inferred.length ? inferred : tasks;
+  }
+
+  if (mode === "short") {
+    const short = tasks.filter((task) => (task.estimateMinutes ?? 60) <= 45);
+    if (short.length) return short;
+    const nearShort = tasks.filter((task) => (task.estimateMinutes ?? 60) <= 60);
+    return nearShort.length ? nearShort : tasks;
+  }
+
+  // Focus is still random, it only narrows the pool toward work that is better
+  // done off-stream / in concentration mode. There is no score ordering anymore.
+  const focus = tasks.filter((task) =>
+    task.streamFriendly === false ||
+    task.deepWork === true ||
+    task.taskType === "bug" ||
+    inferredStreamAffinity(task) < 0
+  );
+  return focus.length ? focus : tasks;
+}
+
+function randomIndex(length: number) {
+  if (length <= 1) return 0;
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi?.getRandomValues) {
+    const value = new Uint32Array(1);
+    cryptoApi.getRandomValues(value);
+    return value[0] % length;
+  }
+  return Math.floor(Math.random() * length);
 }
 
 export function rankedDirectorTasks(
@@ -85,11 +100,12 @@ export function rankedDirectorTasks(
   mode: "work" | "stream" | "short" | "visual" = "work",
   excludeTaskIds: string[] = [],
 ) {
-  const excluded = new Set(excludeTaskIds);
-  return state.tasks
-    .filter((t) => !["done", "archived", "inbox"].includes(t.status) && !isDeferredForFuture(t) && !excluded.has(t.id))
-    .map((task, index) => ({ task, score: scoreTask(task, state, mode), index }))
-    .sort((a, b) => b.score - a.score || a.index - b.index);
+  // Kept for compatibility with older code/debug tooling. The returned order is
+  // deliberately shuffled instead of ranked by a deterministic score.
+  const pool = poolForMode(candidateTasks(state, excludeTaskIds), mode);
+  return pool
+    .map((task) => ({ task, score: 0, index: Math.random() }))
+    .sort((a, b) => a.index - b.index);
 }
 
 export function localDirectorPick(
@@ -97,24 +113,32 @@ export function localDirectorPick(
   mode: "work" | "stream" | "short" | "visual" = "work",
   excludeTaskIds: string[] = [],
 ): DirectorPick | null {
-  let ranked = rankedDirectorTasks(state, mode, excludeTaskIds);
-  // If the user has rerolled through the whole pool, reset exclusions rather than
-  // returning an empty planner.
-  if (!ranked.length && excludeTaskIds.length) ranked = rankedDirectorTasks(state, mode, []);
-  if (!ranked.length) return null;
+  const all = candidateTasks(state, []);
+  if (!all.length) return null;
 
-  const task = ranked[0].task;
-  const reasons: string[] = [];
-  if (task.status === "active") reasons.push("ты уже начал её — меньше потерь на переключение контекста");
-  if (task.blocking) reasons.push("она блокирует дальнейшую работу, поэтому её выгоднее закрыть раньше");
-  if (task.project === "Reytrieve Odyssey") reasons.push("она двигает основной проект");
-  if (mode === "stream" && task.streamFriendly) reasons.push("она хорошо подходит для стрима");
-  if (mode === "work" && task.streamFriendly === false) reasons.push("её логичнее закрыть вне стрима");
-  if (mode === "visual" && task.visual) reasons.push("у неё быстрый визуальный результат");
-  if ((state.energy === "low" || state.energy === "dead") && !task.deepWork) reasons.push("она не требует тяжёлой концентрации сегодня");
+  let pool = poolForMode(candidateTasks(state, excludeTaskIds), mode);
+
+  // When the recent-history exclusion has exhausted a small mode pool, start a
+  // fresh random cycle but still avoid immediately returning the current task.
+  if (!pool.length && excludeTaskIds.length) {
+    const currentId = excludeTaskIds[0];
+    const withoutCurrent = all.filter((task) => task.id !== currentId);
+    pool = poolForMode(withoutCurrent.length ? withoutCurrent : all, mode);
+  }
+  if (!pool.length) return null;
+
+  const task = pool[randomIndex(pool.length)];
+  const reasons: string[] = [`случайный выбор из ${pool.length} подходящих задач режима`];
+  if (mode === "stream") reasons.push("пул ограничен задачами, подходящими для стрима");
+  if (mode === "visual") reasons.push("пул ограничен визуальными задачами");
+  if (mode === "short") reasons.push("пул ограничен короткими задачами, когда это возможно");
+  if (mode === "work") reasons.push("пул смещён к Focus/off-stream работе, но внутри него нет рейтинга");
+
   const available = availableMinutesUntilNextBlock(state);
-  if (available > 0 && task.estimateMinutes && task.estimateMinutes <= available) reasons.push(`она помещается в свободное окно примерно на ${available} мин`);
-  if (!reasons.length) reasons.push("это наиболее подходящая задача из текущей очереди по времени и контексту");
+  if (available > 0 && task.estimateMinutes && task.estimateMinutes <= available) {
+    reasons.push(`она помещается в свободное окно примерно на ${available} мин`);
+  }
+
   return {
     taskId: task.id,
     taskTitle: task.title,

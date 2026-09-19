@@ -45,7 +45,6 @@ function MainDirectorApp() {
   const [thinking, setThinking] = useState(false);
   const [pickHistory, setPickHistory] = useState<string[]>([]);
   const [pickNotice, setPickNotice] = useState("");
-  const pickRequestSeq = useRef(0);
   const savingTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -79,14 +78,14 @@ function MainDirectorApp() {
   }, [state.tasks]);
 
   async function askDirector(mode: PickMode = pickMode, reroll = false) {
-    const requestSeq = ++pickRequestSeq.current;
     setPickMode(mode);
     const excluded = reroll && pick
       ? [pick.taskId, ...pickHistory.filter((id) => id !== pick.taskId)].slice(0, 10)
       : [];
 
-    // Always show a useful local answer immediately. AI refines it afterwards,
-    // so a slow/broken API can no longer leave Director Queue empty.
+    // Task picking is intentionally local + random. It does not call OpenAI and
+    // therefore cannot turn into a deterministic AI-ranked list or spend API money.
+    setThinking(true);
     const localPick = localDirectorPick(state, mode, excluded);
     if (localPick) {
       setPick(localPick);
@@ -96,22 +95,7 @@ function MainDirectorApp() {
       setPick(null);
       setPickNotice("Сейчас нет доступных задач: всё либо завершено, в архиве или отложено на будущее.");
     }
-
-    setThinking(true);
-    try {
-      const data = await window.directorBridge.pick(state, mode, excluded);
-      const candidate = data.pick;
-      const valid = candidate?.taskId && !excluded.includes(candidate.taskId) && state.tasks.some((t) => t.id === candidate.taskId && !["done", "archived", "inbox"].includes(t.status));
-      if (requestSeq === pickRequestSeq.current && candidate && valid) {
-        setPick(candidate);
-        setPickNotice("");
-        setPickHistory((current) => [candidate.taskId, ...current.filter((id) => id !== candidate.taskId)].slice(0, 10));
-      }
-    } catch {
-      // The local pick is already on screen. Nothing else to do.
-    } finally {
-      if (requestSeq === pickRequestSeq.current) setThinking(false);
-    }
+    setThinking(false);
   }
 
   function updateTask(id: string, patch: Partial<Task>) {
@@ -228,10 +212,10 @@ function TodayView({ state, completedToday, pick, thinking, pickNotice, mode, as
       <section className="director-card hero-card">
         <div className="section-label"><span className="spark">✦</span> DIRECTOR QUEUE</div>
         {!pick ? (
-          <div className="empty-pick"><p>{pickNotice || "Не выбирай из пятидесяти пунктов. Скажи, какой сейчас режим — Director выберет одну задачу."}</p><button className="primary big" onClick={() => askDirector("work", false)} disabled={thinking}>{thinking ? "Думаю…" : "WHAT SHOULD I DO?"}</button></div>
+          <div className="empty-pick"><p>{pickNotice || "Не выбирай из пятидесяти пунктов. Выбери режим — Director случайно вытащит одну подходящую задачу."}</p><button className="primary big" onClick={() => askDirector("work", false)} disabled={thinking}>{thinking ? "Думаю…" : "WHAT SHOULD I DO?"}</button></div>
         ) : (
           <div className="pick-content">
-            <small>NEXT TASK</small><h2>{pick.taskTitle}</h2>
+            <small>NEXT TASK · 🎲 RANDOM</small><h2>{pick.taskTitle}</h2>
             {selectedTask && <TaskContextMeta task={selectedTask} />}
             {pick.estimatedMinutes && <div className="time-chip">~ {formatMinutes(pick.estimatedMinutes)}</div>}
             <p className="why"><b>Почему:</b> {pick.why}</p>{pick.caution && <p className="caution">{pick.caution}</p>}

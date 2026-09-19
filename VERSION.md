@@ -1,11 +1,13 @@
-# Director v0.8.1
+# Director v0.8.2
 
 **Database schema:** 6 (без новой миграции)
 
-### Task context on picked tasks
-- Director Queue теперь показывает локацию выбранной задачи: Chapter → Area / Act → Feature.
-- Под выбранной задачей видны Project, task type, stream/off-stream, blocker и теги.
-- Тот же контекст остаётся виден после `Start` в блоке `NOW WORKING ON`.
-- Если задача ещё не размечена, карточка явно пишет `no tags yet`, а не молча скрывает метаданные.
+### True random task picker
+- Director Queue больше не сортирует задачи по детерминированному score и не берёт первый элемент списка.
+- Внутри выбранного режима используется настоящий случайный выбор.
+- `Another one` исключает текущую и недавние задачи; когда маленький пул заканчивается, начинается новый цикл без мгновенного повтора текущей.
+- Режимы теперь формируют только пул: Stream → stream-friendly, Visual → visual, 30 min → короткие, Focus → off-stream/deep-work/debug когда такие есть. Внутри пула нет рейтинга.
+- Выбор задачи полностью локальный и больше не вызывает OpenAI API. Никаких расходов API на WHAT SHOULD I DO / Another one.
+- Карточка помечена `NEXT TASK · 🎲 RANDOM`, чтобы было понятно, что это рандом.
 
-Все данные/105 Miro tasks/checklists/archive/calendar остаются без изменений.
+Все 105 Miro tasks, теги, локации, чеклисты, Completed/Archive, календарь и reminder остаются без изменений.
